@@ -1,8 +1,8 @@
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-        let result = 2 + 2;
-        assert_eq!(result, 4);
-    }
+mod codegen;
+pub mod compile;
+
+pub trait Runner {
+    fn step(&mut self);
+    fn memory(&self) -> &[u64];
+    fn memory_mut(&mut self) -> &mut [u64];
 }
