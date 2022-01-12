@@ -13,7 +13,7 @@ An agent has the following components:
    The short and long term memory of the agent. Also used to pass sensory input and read
    output.
 - __Stack__
-   A space for local variables in functions (see below).
+   A space for local variables in functions (see below). It consists of 256 8 byte values.
 - __Code__
    A collection of *functions* with one entry point. Functions have no arguments and do not
    return values, it is expected that information is shared through the memory. The entry
@@ -21,15 +21,13 @@ An agent has the following components:
 
 ## Code generation
 Each program has the following parameters:
-- __Memory size__
-   Amount of 8 byte chunks that make up the agent's memory.
+- __Memory__
+   The initial values for the agent's memory, in 8 byte chunks.
 - __Code string__
-   A string of 32 bit floating point numbers that is used to generate the actual code.
+   A string of 64 bit values that is used to generate the actual code.
 
-A mix of integer, bitwise, floating point, call, load/store and if/else instructions
-is used. Recursive function calls are turned into no-ops and by extension (infinite) loops
-are impossible.
+A mix of integer, bitwise, call, load/store and conditional branch instructions is used.
+Infinite loops are prevented by only allowing a branch to jump to a later part in the same
+function, and by turning recursive function calls into a no-op.
 
-Instructions are encoded with a variable amount of numbers and therefore the amount of
-functions is only known after parsing the whole code string. For details of instruction
-encoding, check the source code.
+For details of instruction encoding, check `compile.rs`.
