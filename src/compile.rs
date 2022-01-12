@@ -37,6 +37,30 @@ pub enum CompareKind {
     Lt,
 }
 
+const FREQ_END_FUNC: u16 = 3449;
+const FREQ_CALL: u16 = 3449;
+
+const FREQ_INT_ADD: u16 = 3449;
+const FREQ_INT_SUB: u16 = 3449;
+const FREQ_INT_MUL: u16 = 3453;
+const FREQ_INT_MUL_HIGH: u16 = 3449;
+const FREQ_INT_MUL_HIGH_SIGNED: u16 = 3449;
+const FREQ_INT_NEG: u16 = 3449;
+
+const FREQ_BIT_SWAP: u16 = 3449;
+const FREQ_BIT_OR: u16 = 3449;
+const FREQ_BIT_AND: u16 = 3449;
+const FREQ_BIT_XOR: u16 = 3449;
+const FREQ_BIT_SHIFT_L: u16 = 3449;
+const FREQ_BIT_SHIFT_R: u16 = 3449;
+const FREQ_BIT_ROT_L: u16 = 3449;
+const FREQ_BIT_ROT_R: u16 = 3449;
+
+const FREQ_COND_BRANCH: u16 = 3449;
+
+const FREQ_MEM_LOAD: u16 = 3449;
+const FREQ_MEM_STORE: u16 = 3449;
+
 pub fn compile_program(
     code: &[u64],
     memory: Vec<Wrapping<i64>>,
@@ -48,30 +72,6 @@ pub fn compile_program(
 }
 
 fn compile<G: CodeGenerator>(code: &[u64], memory: Vec<Wrapping<i64>>) -> G::Runner {
-    const FREQ_END_FUNC: u16 = 3449;
-    const FREQ_CALL: u16 = 3449;
-
-    const FREQ_INT_ADD: u16 = 3449;
-    const FREQ_INT_SUB: u16 = 3449;
-    const FREQ_INT_MUL: u16 = 3453;
-    const FREQ_INT_MUL_HIGH: u16 = 3449;
-    const FREQ_INT_MUL_HIGH_SIGNED: u16 = 3449;
-    const FREQ_INT_NEG: u16 = 3449;
-
-    const FREQ_BIT_SWAP: u16 = 3449;
-    const FREQ_BIT_OR: u16 = 3449;
-    const FREQ_BIT_AND: u16 = 3449;
-    const FREQ_BIT_XOR: u16 = 3449;
-    const FREQ_BIT_SHIFT_L: u16 = 3449;
-    const FREQ_BIT_SHIFT_R: u16 = 3449;
-    const FREQ_BIT_ROT_L: u16 = 3449;
-    const FREQ_BIT_ROT_R: u16 = 3449;
-
-    const FREQ_COND_BRANCH: u16 = 3449;
-
-    const FREQ_MEM_LOAD: u16 = 3449;
-    const FREQ_MEM_STORE: u16 = 3449;
-
     // Count the amount of functions and how many instructions they contain.
     let mut funcs = vec![Function::new(0)];
     for (i, instruction) in code.iter().copied().enumerate() {
@@ -119,7 +119,7 @@ fn compile<G: CodeGenerator>(code: &[u64], memory: Vec<Wrapping<i64>>) -> G::Run
                 let idx = calc_call_idx(imm, src, dst, func_count);
 
                 // Only emit call instruction when it will not lead to a cycle.
-                if !call_stack.contains(&idx) {
+                if !call_stack.contains(&idx) && idx != f {
                     call_stack.push(f);
                     remaining_funcs.push((f, i + 1));
                     remaining_funcs.push((idx, 0));
@@ -168,6 +168,8 @@ fn compile<G: CodeGenerator>(code: &[u64], memory: Vec<Wrapping<i64>>) -> G::Run
                 if max_offset > 0 {
                     let raw_params = (imm & !(3 << 30)) | (imm % max_offset as u32);
                     gen.emit_cond_branch(dst, src, BranchParams(raw_params));
+                } else {
+                    gen.emit_nop();
                 }
             } else if cmp_freq(&mut kind, FREQ_MEM_LOAD) && !is_compiled {
                 let addr = imm as usize % memory_size;
@@ -175,7 +177,7 @@ fn compile<G: CodeGenerator>(code: &[u64], memory: Vec<Wrapping<i64>>) -> G::Run
             } else if cmp_freq(&mut kind, FREQ_MEM_STORE) && !is_compiled {
                 let addr = imm as usize % memory_size;
                 gen.emit_mem_store(addr, src);
-            } else {
+            } else if !is_compiled {
                 unreachable!("instruction frequencies don't add up to u16::MAX")
             }
         }
@@ -226,5 +228,22 @@ impl Function {
             first_instruction,
             instruction_count: 0,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rand::prelude::*;
+
+    #[test]
+    fn sample() {
+        let mut code = [0; 8];
+        let memory = vec![Wrapping(0); 128];
+
+        thread_rng().fill(&mut code);
+
+        let mut runner = compile_program(&code, memory, CodeGenKind::default());
+        runner.step();
     }
 }
