@@ -1,14 +1,15 @@
-# CPU AI
+# AIVM
 Artificial intelligence that embraces the hardware it runs on.
 
 Instead of relying on huge matrix multiplications and non-linear activation functions,
-`cpu_ai` uses native machine code to directly drive it's decision making. This removes an
-expensive layer of abstraction from typical artificial intelligence agents.
+`AIVM` uses a virtual machine with trainable code to directly drive its decision making. The
+code can be compiled into native machine code, removing an expensive layer of abstraction from
+typical artificial intelligence agents.
 
 ## Agent structure
 An agent has the following components:
 - __Thread__
-   The CPU thread that runs the machine code.
+   The thread that runs the machine code.
 - __Memory__
    The short and long term memory of the agent. Also used to pass sensory input and read
    output.
