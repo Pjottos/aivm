@@ -1,5 +1,5 @@
 use crate::{
-    codegen::CodeGenerator,
+    codegen::CodeGeneratorImpl,
     compile::{BranchParams, CompareKind},
     Runner,
 };
@@ -15,7 +15,7 @@ enum Instruction {
     IntSub { dst: u8, src: u8 },
     IntMul { dst: u8, src: u8 },
     IntMulHigh { dst: u8, src: u8 },
-    IntMulHighSigned { dst: u8, src: u8 },
+    IntMulHighUnsigned { dst: u8, src: u8 },
     IntNeg { dst: u8 },
 
     BitSwap { dst: u8, src: u8 },
@@ -35,17 +35,17 @@ enum Instruction {
 
 pub struct Interpreter {
     functions: Vec<Vec<Instruction>>,
-    memory: Vec<Wrapping<i64>>,
+    memory: Option<Vec<i64>>,
     cur_function: usize,
 }
 
-impl CodeGenerator for Interpreter {
+impl CodeGeneratorImpl for Interpreter {
     type Runner = Self;
 
-    fn create(function_count: usize, memory: Vec<Wrapping<i64>>) -> Self {
+    fn create(function_count: usize) -> Self {
         Self {
             functions: vec![vec![]; function_count],
-            memory,
+            memory: None,
             cur_function: 0,
         }
     }
@@ -74,8 +74,8 @@ impl CodeGenerator for Interpreter {
         self.functions[self.cur_function].push(Instruction::IntMulHigh { dst, src });
     }
 
-    fn emit_int_mul_high_signed(&mut self, dst: u8, src: u8) {
-        self.functions[self.cur_function].push(Instruction::IntMulHighSigned { dst, src });
+    fn emit_int_mul_high_unsigned(&mut self, dst: u8, src: u8) {
+        self.functions[self.cur_function].push(Instruction::IntMulHighUnsigned { dst, src });
     }
 
     fn emit_int_neg(&mut self, dst: u8) {
@@ -130,27 +130,35 @@ impl CodeGenerator for Interpreter {
         self.cur_function = idx;
     }
 
-    fn finish(self) -> Self::Runner {
+    fn finish(mut self, memory: Vec<i64>) -> Self::Runner {
+        self.memory = Some(memory);
         self
     }
 }
 
 impl Runner for Interpreter {
     fn step(&mut self) {
-        Self::call_function(&self.functions, &mut self.memory, 0);
+        let memory = self.memory.as_mut().expect("memory not initialized");
+        Self::call_function(&self.functions, memory, 0);
     }
 
-    fn memory(&self) -> &[Wrapping<i64>] {
-        &self.memory
+    fn memory(&self) -> &[i64] {
+        self.memory
+            .as_ref()
+            .expect("memory not initialized")
+            .as_ref()
     }
 
-    fn memory_mut(&mut self) -> &mut [Wrapping<i64>] {
-        &mut self.memory
+    fn memory_mut(&mut self) -> &mut [i64] {
+        self.memory
+            .as_mut()
+            .expect("memory not initialized")
+            .as_mut()
     }
 }
 
 impl Interpreter {
-    fn call_function(functions: &[Vec<Instruction>], memory: &mut [Wrapping<i64>], idx: usize) {
+    fn call_function(functions: &[Vec<Instruction>], memory: &mut [i64], idx: usize) {
         use Instruction::*;
 
         let mut stack = [Wrapping(0i64); 256];
@@ -170,14 +178,14 @@ impl Interpreter {
                 IntSub { dst, src } => stack[dst as usize] -= stack[src as usize],
                 IntMul { dst, src } => stack[dst as usize] *= stack[src as usize],
                 IntMulHigh { dst, src } => {
-                    let d = stack[dst as usize].0 as u128;
-                    let s = stack[src as usize].0 as u128;
+                    let d = stack[dst as usize].0 as i128;
+                    let s = stack[src as usize].0 as i128;
 
                     stack[dst as usize] = Wrapping(((d * s) >> 64) as i64);
                 }
-                IntMulHighSigned { dst, src } => {
-                    let d = stack[dst as usize].0 as i128;
-                    let s = stack[src as usize].0 as i128;
+                IntMulHighUnsigned { dst, src } => {
+                    let d = stack[dst as usize].0 as u128;
+                    let s = stack[src as usize].0 as u128;
 
                     stack[dst as usize] = Wrapping(((d * s) >> 64) as i64);
                 }
@@ -212,8 +220,8 @@ impl Interpreter {
                     }
                 }
 
-                MemLoad { dst, addr } => stack[dst as usize] = memory[addr],
-                MemStore { addr, src } => memory[addr] = stack[src as usize],
+                MemLoad { dst, addr } => stack[dst as usize].0 = memory[addr],
+                MemStore { addr, src } => memory[addr] = stack[src as usize].0,
             }
         }
     }

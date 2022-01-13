@@ -1,9 +1,5 @@
-use crate::{
-    codegen::{self, CodeGenKind, CodeGenerator},
-    Runner,
-};
+use crate::{codegen::CodeGenerator, Runner};
 
-use core::num::Wrapping;
 use std::collections::HashSet;
 
 #[repr(transparent)]
@@ -44,7 +40,7 @@ const FREQ_INT_ADD: u16 = 3449;
 const FREQ_INT_SUB: u16 = 3449;
 const FREQ_INT_MUL: u16 = 3453;
 const FREQ_INT_MUL_HIGH: u16 = 3449;
-const FREQ_INT_MUL_HIGH_SIGNED: u16 = 3449;
+const FREQ_INT_MUL_HIGH_UNSIGNED: u16 = 3449;
 const FREQ_INT_NEG: u16 = 3449;
 
 const FREQ_BIT_SWAP: u16 = 3449;
@@ -61,17 +57,7 @@ const FREQ_COND_BRANCH: u16 = 3449;
 const FREQ_MEM_LOAD: u16 = 3449;
 const FREQ_MEM_STORE: u16 = 3449;
 
-pub fn compile_program(
-    code: &[u64],
-    memory: Vec<Wrapping<i64>>,
-    code_gen_kind: CodeGenKind,
-) -> Box<dyn Runner> {
-    match code_gen_kind {
-        CodeGenKind::Interpreter => Box::new(compile::<codegen::Interpreter>(code, memory)),
-    }
-}
-
-fn compile<G: CodeGenerator>(code: &[u64], memory: Vec<Wrapping<i64>>) -> G::Runner {
+pub fn compile<G: CodeGenerator>(code: &[u64], memory: Vec<i64>) -> impl Runner {
     // Count the amount of functions and how many instructions they contain.
     let mut funcs = vec![Function::new(0)];
     for (i, instruction) in code.iter().copied().enumerate() {
@@ -87,7 +73,7 @@ fn compile<G: CodeGenerator>(code: &[u64], memory: Vec<Wrapping<i64>>) -> G::Run
 
     let func_count = funcs.len();
     let memory_size = memory.len();
-    let mut gen = G::create(func_count, memory);
+    let mut gen = G::create(func_count);
 
     let mut call_stack = vec![];
     let mut remaining_funcs = vec![(0, 0)];
@@ -143,8 +129,8 @@ fn compile<G: CodeGenerator>(code: &[u64], memory: Vec<Wrapping<i64>>) -> G::Run
                 gen.emit_int_mul(dst, src);
             } else if cmp_freq(&mut kind, FREQ_INT_MUL_HIGH) && !is_compiled {
                 gen.emit_int_mul_high(dst, src);
-            } else if cmp_freq(&mut kind, FREQ_INT_MUL_HIGH_SIGNED) && !is_compiled {
-                gen.emit_int_mul_high_signed(dst, src);
+            } else if cmp_freq(&mut kind, FREQ_INT_MUL_HIGH_UNSIGNED) && !is_compiled {
+                gen.emit_int_mul_high_unsigned(dst, src);
             } else if cmp_freq(&mut kind, FREQ_INT_NEG) && !is_compiled {
                 gen.emit_int_neg(dst);
             } else if cmp_freq(&mut kind, FREQ_BIT_SWAP) && !is_compiled {
@@ -189,7 +175,7 @@ fn compile<G: CodeGenerator>(code: &[u64], memory: Vec<Wrapping<i64>>) -> G::Run
         }
     }
 
-    gen.finish()
+    gen.finish(memory)
 }
 
 #[inline]
@@ -228,22 +214,5 @@ impl Function {
             first_instruction,
             instruction_count: 0,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rand::prelude::*;
-
-    #[test]
-    fn sample() {
-        let mut code = [0; 8];
-        let memory = vec![Wrapping(0); 128];
-
-        thread_rng().fill(&mut code);
-
-        let mut runner = compile_program(&code, memory, CodeGenKind::default());
-        runner.step();
     }
 }
