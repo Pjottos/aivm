@@ -3,6 +3,12 @@ name = "aivm_train"
 version = "0.1.0"
 edition = "2021"
 
+license = "MIT OR Apache-2.0"
+description = "Library for training AIVM code."
+homepage = "https://github.com/Pjottos/aivm"
+documentation = "https://docs.rs/aivm_train"
+repository = "https://github.com/Pjottos/aivm"
+
 [dependencies]
 rand = { version = "0.8", default-features = false }
 rand_pcg = "0.3"
