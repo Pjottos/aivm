@@ -156,13 +156,13 @@ fn compile<G: CodeGenerator>(code: &[u64], memory: Vec<Wrapping<i64>>) -> G::Run
             } else if cmp_freq(&mut kind, FREQ_BIT_XOR) && !is_compiled {
                 gen.emit_bit_xor(dst, src);
             } else if cmp_freq(&mut kind, FREQ_BIT_SHIFT_L) && !is_compiled {
-                gen.emit_bit_shift_left(dst, imm as u8);
+                gen.emit_bit_shift_left(dst, imm as u8 & 0x3F);
             } else if cmp_freq(&mut kind, FREQ_BIT_SHIFT_R) && !is_compiled {
-                gen.emit_bit_shift_right(dst, imm as u8);
+                gen.emit_bit_shift_right(dst, imm as u8 & 0x3F);
             } else if cmp_freq(&mut kind, FREQ_BIT_ROT_L) && !is_compiled {
-                gen.emit_bit_rotate_left(dst, imm as u8);
+                gen.emit_bit_rotate_left(dst, imm as u8 & 0x3F);
             } else if cmp_freq(&mut kind, FREQ_BIT_ROT_R) && !is_compiled {
-                gen.emit_bit_rotate_right(dst, imm as u8);
+                gen.emit_bit_rotate_right(dst, imm as u8 & 0x3F);
             } else if cmp_freq(&mut kind, FREQ_COND_BRANCH) && !is_compiled {
                 let max_offset = func.instruction_count - i - 1;
                 if max_offset > 0 {
