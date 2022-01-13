@@ -3,6 +3,12 @@ name = "aivm"
 version = "0.1.0"
 edition = "2021"
 
+license = "MIT OR Apache-2.0"
+description = "Artificial intelligence that embraces the hardware it runs on."
+homepage = "https://github.com/Pjottos/aivm"
+documentation = "https://docs.rs/aivm"
+repository = "https://github.com/Pjottos/aivm"
+
 [dependencies]
 
 [dev-dependencies]
