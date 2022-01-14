@@ -1,19 +1,31 @@
+#[cfg(feature = "cranelift")]
+mod cranelift;
 mod interpreter;
 
+#[cfg(feature = "cranelift")]
+pub use self::cranelift::Cranelift;
 pub use interpreter::Interpreter;
 
-pub(crate) use private::CodeGeneratorImpl;
+pub trait CodeGenerator: private::CodeGeneratorImpl {}
 
-pub trait CodeGenerator: CodeGeneratorImpl {}
-impl<G: CodeGeneratorImpl> CodeGenerator for G {}
+impl<T: private::CodeGeneratorImpl> CodeGenerator for T {}
 
-mod private {
+pub(crate) mod private {
     use crate::{compile::BranchParams, Runner};
 
     pub trait CodeGeneratorImpl {
-        type Runner: Runner;
+        type Runner: Runner + 'static;
+        type Emitter<'a>: Emitter + 'a
+        where
+            Self: 'a;
 
-        fn create(function_count: usize) -> Self;
+        fn begin(&mut self, function_count: usize);
+        fn begin_function(&mut self, idx: usize) -> Self::Emitter<'_>;
+        fn finish(&mut self, memory: Vec<i64>) -> Self::Runner;
+    }
+
+    pub trait Emitter {
+        fn prepare_emit(&mut self) {}
 
         fn emit_call(&mut self, idx: usize);
         fn emit_nop(&mut self);
@@ -38,8 +50,5 @@ mod private {
 
         fn emit_mem_load(&mut self, dst: u8, addr: usize);
         fn emit_mem_store(&mut self, addr: usize, src: u8);
-
-        fn begin_function(&mut self, idx: usize);
-        fn finish(self, memory: Vec<i64>) -> Self::Runner;
     }
 }

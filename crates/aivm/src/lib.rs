@@ -1,7 +1,9 @@
-mod codegen;
+#![feature(generic_associated_types)]
+
+pub mod codegen;
 mod compile;
 
-pub use compile::compile;
+pub use compile::Compiler;
 
 pub trait Runner {
     fn step(&mut self);
