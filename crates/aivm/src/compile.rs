@@ -1,4 +1,7 @@
-use crate::{codegen::CodeGenerator, Runner};
+use crate::{
+    codegen::{private::Emitter, CodeGenerator},
+    Runner,
+};
 
 use std::collections::HashSet;
 
@@ -57,125 +60,158 @@ const FREQ_COND_BRANCH: u16 = 3449;
 const FREQ_MEM_LOAD: u16 = 3449;
 const FREQ_MEM_STORE: u16 = 3449;
 
-pub fn compile<G: CodeGenerator>(code: &[u64], memory: Vec<i64>) -> impl Runner {
-    // Count the amount of functions and how many instructions they contain.
-    let mut funcs = vec![Function::new(0)];
-    for (i, instruction) in code.iter().copied().enumerate() {
-        let (kind, _, _, _) = instruction_components(instruction);
+pub struct Compiler<G: CodeGenerator> {
+    gen: G,
+    funcs: Vec<Function>,
+    remaining_funcs: Vec<(usize, usize)>,
+    call_stack: Vec<usize>,
+    compiled_funcs: HashSet<usize>,
+}
 
-        if kind <= FREQ_END_FUNC {
-            funcs.push(Function::new(i + 1));
-            continue;
+impl<G: CodeGenerator> Compiler<G> {
+    pub fn new(gen: G) -> Self {
+        Self {
+            gen,
+            funcs: vec![],
+            remaining_funcs: vec![],
+            call_stack: vec![],
+            compiled_funcs: HashSet::new(),
         }
-
-        funcs.last_mut().unwrap().instruction_count += 1;
     }
 
-    let func_count = funcs.len();
-    let memory_size = memory.len();
-    let mut gen = G::create(func_count);
+    pub fn compile(&mut self, code: &[u64], memory: Vec<i64>) -> impl Runner + 'static {
+        self.clear();
 
-    let mut call_stack = vec![];
-    let mut remaining_funcs = vec![(0, 0)];
-    let mut compiled_funcs = HashSet::new();
+        // Count the amount of functions and how many instructions they contain.
+        self.funcs.push(Function::new(0));
+        for (i, instruction) in code.iter().copied().enumerate() {
+            let (kind, _, _, _) = instruction_components(instruction);
 
-    'funcs: while let Some((f, offset, func)) = remaining_funcs
-        .pop()
-        .map(|(f, offset)| (f, offset, &mut funcs[f]))
-    {
-        let is_compiled = compiled_funcs.contains(&f);
-        if !is_compiled {
-            gen.begin_function(f);
+            if kind <= FREQ_END_FUNC {
+                self.funcs.push(Function::new(i + 1));
+                continue;
+            }
+
+            self.funcs.last_mut().unwrap().instruction_count += 1;
         }
 
-        let start = func.first_instruction + offset;
-        let end = func.first_instruction + func.instruction_count;
-        for (i, instruction) in code[start..end]
-            .iter()
-            .copied()
-            .enumerate()
-            .map(|(i, inst)| (i + offset, inst))
+        let func_count = self.funcs.len();
+        let memory_size = memory.len();
+
+        self.remaining_funcs.push((0, 0));
+
+        'funcs: while let Some((f, offset, func)) = self
+            .remaining_funcs
+            .pop()
+            .map(|(f, offset)| (f, offset, &self.funcs[f]))
         {
-            let (mut kind, dst, src, imm) = instruction_components(instruction);
+            let mut emitter = self
+                .compiled_funcs
+                .contains(&f)
+                .then(|| self.gen.begin_function(f));
 
-            // Never included in the function body.
-            kind -= FREQ_END_FUNC;
+            let start = func.first_instruction + offset;
+            let end = func.first_instruction + func.instruction_count;
+            for (i, instruction) in code[start..end]
+                .iter()
+                .copied()
+                .enumerate()
+                .map(|(i, inst)| (i + offset, inst))
+            {
+                let (mut kind, dst, src, imm) = instruction_components(instruction);
 
-            if cmp_freq(&mut kind, FREQ_CALL) {
-                let idx = calc_call_idx(imm, src, dst, func_count);
+                if let Some(e) = emitter.as_mut() {
+                    e.prepare_emit();
+                }
 
-                // Only emit call instruction when it will not lead to a cycle.
-                if !call_stack.contains(&idx) && idx != f {
-                    call_stack.push(f);
-                    remaining_funcs.push((f, i + 1));
-                    remaining_funcs.push((idx, 0));
+                // Never included in the function body.
+                kind -= FREQ_END_FUNC;
 
-                    if !is_compiled {
-                        gen.emit_call(idx);
+                if cmp_freq(&mut kind, FREQ_CALL) {
+                    let idx = calc_call_idx(imm, src, dst, func_count);
+
+                    // Only emit call instruction when it will not lead to a cycle.
+                    if !self.call_stack.contains(&idx) && idx != f {
+                        self.call_stack.push(f);
+                        self.remaining_funcs.push((f, i + 1));
+                        self.remaining_funcs.push((idx, 0));
+
+                        if let Some(e) = emitter.as_mut() {
+                            e.emit_call(idx);
+                        }
+
+                        continue 'funcs;
                     }
 
-                    continue 'funcs;
+                    // Ensure instruction count remains the same, for branches.
+                    if let Some(e) = emitter.as_mut() {
+                        e.emit_nop();
+                    }
+                } else if let Some(emitter) = emitter.as_mut() {
+                    if cmp_freq(&mut kind, FREQ_INT_ADD) {
+                        emitter.emit_int_add(dst, src);
+                    } else if cmp_freq(&mut kind, FREQ_INT_SUB) {
+                        emitter.emit_int_sub(dst, src);
+                    } else if cmp_freq(&mut kind, FREQ_INT_MUL) {
+                        emitter.emit_int_mul(dst, src);
+                    } else if cmp_freq(&mut kind, FREQ_INT_MUL_HIGH) {
+                        emitter.emit_int_mul_high(dst, src);
+                    } else if cmp_freq(&mut kind, FREQ_INT_MUL_HIGH_UNSIGNED) {
+                        emitter.emit_int_mul_high_unsigned(dst, src);
+                    } else if cmp_freq(&mut kind, FREQ_INT_NEG) {
+                        emitter.emit_int_neg(dst);
+                    } else if cmp_freq(&mut kind, FREQ_BIT_SWAP) {
+                        emitter.emit_bit_swap(dst, src);
+                    } else if cmp_freq(&mut kind, FREQ_BIT_OR) {
+                        emitter.emit_bit_or(dst, src);
+                    } else if cmp_freq(&mut kind, FREQ_BIT_AND) {
+                        emitter.emit_bit_and(dst, src);
+                    } else if cmp_freq(&mut kind, FREQ_BIT_XOR) {
+                        emitter.emit_bit_xor(dst, src);
+                    } else if cmp_freq(&mut kind, FREQ_BIT_SHIFT_L) {
+                        emitter.emit_bit_shift_left(dst, imm as u8 & 0x3F);
+                    } else if cmp_freq(&mut kind, FREQ_BIT_SHIFT_R) {
+                        emitter.emit_bit_shift_right(dst, imm as u8 & 0x3F);
+                    } else if cmp_freq(&mut kind, FREQ_BIT_ROT_L) {
+                        emitter.emit_bit_rotate_left(dst, imm as u8 & 0x3F);
+                    } else if cmp_freq(&mut kind, FREQ_BIT_ROT_R) {
+                        emitter.emit_bit_rotate_right(dst, imm as u8 & 0x3F);
+                    } else if cmp_freq(&mut kind, FREQ_COND_BRANCH) {
+                        let max_offset = func.instruction_count - i - 1;
+                        if max_offset > 0 {
+                            let raw_params = (imm & !(3 << 30)) | (imm % max_offset as u32);
+                            emitter.emit_cond_branch(dst, src, BranchParams(raw_params));
+                        } else {
+                            emitter.emit_nop();
+                        }
+                    } else if cmp_freq(&mut kind, FREQ_MEM_LOAD) {
+                        let addr = imm as usize % memory_size;
+                        emitter.emit_mem_load(dst, addr);
+                    } else if cmp_freq(&mut kind, FREQ_MEM_STORE) {
+                        let addr = imm as usize % memory_size;
+                        emitter.emit_mem_store(addr, src);
+                    } else {
+                        unreachable!("instruction frequencies don't add up to u16::MAX")
+                    }
                 }
+            }
 
-                // Ensure instruction count remains the same, for branches.
-                if !is_compiled {
-                    gen.emit_nop();
-                }
-            } else if cmp_freq(&mut kind, FREQ_INT_ADD) && !is_compiled {
-                gen.emit_int_add(dst, src);
-            } else if cmp_freq(&mut kind, FREQ_INT_SUB) && !is_compiled {
-                gen.emit_int_sub(dst, src);
-            } else if cmp_freq(&mut kind, FREQ_INT_MUL) && !is_compiled {
-                gen.emit_int_mul(dst, src);
-            } else if cmp_freq(&mut kind, FREQ_INT_MUL_HIGH) && !is_compiled {
-                gen.emit_int_mul_high(dst, src);
-            } else if cmp_freq(&mut kind, FREQ_INT_MUL_HIGH_UNSIGNED) && !is_compiled {
-                gen.emit_int_mul_high_unsigned(dst, src);
-            } else if cmp_freq(&mut kind, FREQ_INT_NEG) && !is_compiled {
-                gen.emit_int_neg(dst);
-            } else if cmp_freq(&mut kind, FREQ_BIT_SWAP) && !is_compiled {
-                gen.emit_bit_swap(dst, src);
-            } else if cmp_freq(&mut kind, FREQ_BIT_OR) && !is_compiled {
-                gen.emit_bit_or(dst, src);
-            } else if cmp_freq(&mut kind, FREQ_BIT_AND) && !is_compiled {
-                gen.emit_bit_and(dst, src);
-            } else if cmp_freq(&mut kind, FREQ_BIT_XOR) && !is_compiled {
-                gen.emit_bit_xor(dst, src);
-            } else if cmp_freq(&mut kind, FREQ_BIT_SHIFT_L) && !is_compiled {
-                gen.emit_bit_shift_left(dst, imm as u8 & 0x3F);
-            } else if cmp_freq(&mut kind, FREQ_BIT_SHIFT_R) && !is_compiled {
-                gen.emit_bit_shift_right(dst, imm as u8 & 0x3F);
-            } else if cmp_freq(&mut kind, FREQ_BIT_ROT_L) && !is_compiled {
-                gen.emit_bit_rotate_left(dst, imm as u8 & 0x3F);
-            } else if cmp_freq(&mut kind, FREQ_BIT_ROT_R) && !is_compiled {
-                gen.emit_bit_rotate_right(dst, imm as u8 & 0x3F);
-            } else if cmp_freq(&mut kind, FREQ_COND_BRANCH) && !is_compiled {
-                let max_offset = func.instruction_count - i - 1;
-                if max_offset > 0 {
-                    let raw_params = (imm & !(3 << 30)) | (imm % max_offset as u32);
-                    gen.emit_cond_branch(dst, src, BranchParams(raw_params));
-                } else {
-                    gen.emit_nop();
-                }
-            } else if cmp_freq(&mut kind, FREQ_MEM_LOAD) && !is_compiled {
-                let addr = imm as usize % memory_size;
-                gen.emit_mem_load(dst, addr);
-            } else if cmp_freq(&mut kind, FREQ_MEM_STORE) && !is_compiled {
-                let addr = imm as usize % memory_size;
-                gen.emit_mem_store(addr, src);
-            } else if !is_compiled {
-                unreachable!("instruction frequencies don't add up to u16::MAX")
+            self.call_stack.pop();
+
+            if emitter.is_some() {
+                self.compiled_funcs.insert(f);
             }
         }
 
-        call_stack.pop();
-
-        if !is_compiled {
-            compiled_funcs.insert(f);
-        }
+        self.gen.finish(memory)
     }
 
-    gen.finish(memory)
+    fn clear(&mut self) {
+        self.funcs.clear();
+        self.remaining_funcs.clear();
+        self.call_stack.clear();
+        self.compiled_funcs.clear();
+    }
 }
 
 #[inline]
