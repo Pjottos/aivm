@@ -19,13 +19,14 @@ pub(crate) mod private {
         where
             Self: 'a;
 
-        fn begin(&mut self, function_count: usize);
+        fn begin(&mut self, _function_count: usize) {}
         fn begin_function(&mut self, idx: usize) -> Self::Emitter<'_>;
         fn finish(&mut self, memory: Vec<i64>) -> Self::Runner;
     }
 
     pub trait Emitter {
         fn prepare_emit(&mut self) {}
+        fn finalize(&mut self) {}
 
         fn emit_call(&mut self, idx: usize);
         fn emit_nop(&mut self);
