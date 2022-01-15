@@ -3,7 +3,7 @@ use crate::{
     compile::{BranchParams, CompareKind},
 };
 
-use std::num::Wrapping;
+use std::num::{NonZeroUsize, Wrapping};
 
 pub struct Interpreter {
     functions: Vec<Vec<Instruction>>,
@@ -13,12 +13,12 @@ impl codegen::private::CodeGeneratorImpl for Interpreter {
     type Runner = Runner;
     type Emitter<'a> = Emitter<'a>;
 
-    fn begin(&mut self, function_count: usize) {
+    fn begin(&mut self, function_count: NonZeroUsize) {
         for func in &mut self.functions {
             func.clear();
         }
 
-        self.functions.resize(function_count, vec![]);
+        self.functions.resize(function_count.get(), vec![]);
     }
 
     fn begin_function(&mut self, idx: usize) -> Self::Emitter<'_> {
