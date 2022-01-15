@@ -1,8 +1,8 @@
-#[cfg(feature = "cranelift")]
+#[cfg(feature = "jit-cranelift")]
 mod cranelift;
 mod interpreter;
 
-#[cfg(feature = "cranelift")]
+#[cfg(feature = "jit-cranelift")]
 pub use self::cranelift::Cranelift;
 pub use interpreter::Interpreter;
 
@@ -13,13 +13,15 @@ impl<T: private::CodeGeneratorImpl> CodeGenerator for T {}
 pub(crate) mod private {
     use crate::{compile::BranchParams, Runner};
 
+    use std::num::NonZeroUsize;
+
     pub trait CodeGeneratorImpl {
         type Runner: Runner + 'static;
         type Emitter<'a>: Emitter + 'a
         where
             Self: 'a;
 
-        fn begin(&mut self, _function_count: usize) {}
+        fn begin(&mut self, function_count: NonZeroUsize);
         fn begin_function(&mut self, idx: usize) -> Self::Emitter<'_>;
         fn finish(&mut self, memory: Vec<i64>) -> Self::Runner;
     }

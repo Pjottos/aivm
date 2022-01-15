@@ -4,39 +4,73 @@ use crate::{
 };
 
 use cranelift::{
-    codegen::{ir, isa},
+    codegen::{
+        binemit::{NullStackMapSink, NullTrapSink},
+        ir,
+        settings::{self, Configurable},
+        Context,
+    },
     frontend::{FunctionBuilder, FunctionBuilderContext, Variable},
     prelude::*,
 };
+use cranelift_jit::{JITBuilder, JITModule};
+use cranelift_module::{default_libcall_names, FuncId, Linkage, Module};
 
-use std::{collections::HashMap, convert::TryInto};
+use std::{collections::HashMap, convert::TryInto, mem, num::NonZeroUsize};
 
 const VAR_MEM_START: u32 = 256;
 /// Temporary, for use in the swap instruction.
 const VAR_TMP: u32 = 257;
 
 pub struct Cranelift {
-    ctx: FunctionBuilderContext,
-    cur_function: Option<ir::Function>,
-
-    functions: HashMap<u32, ir::entities::FuncRef>,
+    func_ctx: FunctionBuilderContext,
+    func_refs: HashMap<u32, ir::entities::FuncRef>,
+    functions: Vec<FuncId>,
     upcoming_blocks: HashMap<u32, Block>,
+    module: JITModule,
+    ctx: Context,
+    cur_function: Option<usize>,
 }
 
 impl codegen::private::CodeGeneratorImpl for Cranelift {
     type Runner = Runner;
     type Emitter<'a> = Emitter<'a>;
 
-    fn begin_function(&mut self, idx: usize) -> Self::Emitter<'_> {
-        self.cur_function = Some(ir::Function::with_name_signature(
-            func_name(idx),
-            func_signature(),
-        ));
-        self.functions.clear();
-        self.upcoming_blocks.clear();
+    fn begin(&mut self, function_count: NonZeroUsize) {
+        let function_count = function_count.get();
 
-        let mut builder = FunctionBuilder::new(self.cur_function.as_mut().unwrap(), &mut self.ctx);
-        let sig = builder.import_signature(func_signature());
+        self.cur_function = None;
+        self.functions.clear();
+        self.functions.reserve(function_count);
+
+        let sig = self.make_signature();
+        let main_func = self
+            .module
+            .declare_function("main", Linkage::Export, &sig)
+            .unwrap();
+        self.functions.push(main_func);
+
+        for i in 1u32..function_count.try_into().unwrap() {
+            let func = self
+                .module
+                .declare_function(&i.to_string(), Linkage::Local, &sig)
+                .unwrap();
+            self.functions.push(func);
+        }
+    }
+
+    fn begin_function(&mut self, idx: usize) -> Self::Emitter<'_> {
+        self.define_cur_function();
+        self.cur_function = Some(idx);
+
+        self.func_refs.clear();
+        self.upcoming_blocks.clear();
+        self.module.clear_context(&mut self.ctx);
+
+        self.ctx.func.signature = self.make_signature();
+        self.ctx.func.name = ExternalName::user(0, self.functions[idx].as_u32());
+
+        let mut builder = FunctionBuilder::new(&mut self.ctx.func, &mut self.func_ctx);
 
         for i in 0..256 {
             builder.declare_var(Variable::with_u32(i), ir::types::I64);
@@ -54,26 +88,78 @@ impl codegen::private::CodeGeneratorImpl for Cranelift {
 
         Emitter {
             builder,
-            sig,
-            functions: &mut self.functions,
+            func_refs: &mut self.func_refs,
+            module: &mut self.module,
+            functions: &self.functions,
+
             upcoming_blocks: &mut self.upcoming_blocks,
             next_instruction: 0,
         }
     }
 
     fn finish(&mut self, memory: Vec<i64>) -> Self::Runner {
-        Runner { memory }
+        self.define_cur_function();
+        self.module.finalize_definitions();
+
+        let mut module = Self::create_jit_module();
+        mem::swap(&mut module, &mut self.module);
+        self.module.clear_context(&mut self.ctx);
+
+        Runner {
+            func_id: self.functions[0],
+            module,
+            memory,
+        }
     }
 }
 
 impl Cranelift {
     pub fn new() -> Self {
+        let module = Self::create_jit_module();
+        let ctx = module.make_context();
+
         Self {
-            ctx: FunctionBuilderContext::new(),
-            cur_function: None,
-            functions: HashMap::new(),
+            func_ctx: FunctionBuilderContext::new(),
+            func_refs: HashMap::new(),
+            functions: vec![],
             upcoming_blocks: HashMap::new(),
+            module,
+            ctx,
+            cur_function: None,
         }
+    }
+
+    fn make_signature(&self) -> Signature {
+        let mut sig = self.module.make_signature();
+        sig.params.push(ir::AbiParam::new(ir::types::R64));
+
+        sig
+    }
+
+    fn define_cur_function(&mut self) {
+        if let Some(f) = self.cur_function {
+            self.module
+                .define_function(
+                    self.functions[f],
+                    &mut self.ctx,
+                    &mut NullTrapSink {},
+                    &mut NullStackMapSink {},
+                )
+                .unwrap();
+        }
+    }
+
+    fn create_jit_module() -> JITModule {
+        let mut flag_builder = settings::builder();
+        flag_builder.set("use_colocated_libcalls", "false").unwrap();
+        // FIXME set back to true once the x64 backend supports it.
+        flag_builder.set("is_pic", "false").unwrap();
+
+        let isa_builder = cranelift_native::builder().unwrap_or_else(|msg| {
+            panic!("unsupported host machine: {msg}");
+        });
+        let isa = isa_builder.finish(settings::Flags::new(flag_builder));
+        JITModule::new(JITBuilder::with_isa(isa, default_libcall_names()))
     }
 }
 
@@ -83,24 +169,12 @@ impl Default for Cranelift {
     }
 }
 
-fn func_name(idx: usize) -> ir::ExternalName {
-    ir::ExternalName::User {
-        namespace: 0,
-        index: idx.try_into().unwrap(),
-    }
-}
-
-fn func_signature() -> ir::Signature {
-    let mut sig = ir::Signature::new(isa::CallConv::Fast);
-    sig.params.push(ir::AbiParam::new(ir::types::R64));
-
-    sig
-}
-
 pub struct Emitter<'a> {
     builder: FunctionBuilder<'a>,
-    sig: ir::entities::SigRef,
-    functions: &'a mut HashMap<u32, ir::entities::FuncRef>,
+    func_refs: &'a mut HashMap<u32, ir::entities::FuncRef>,
+    module: &'a mut JITModule,
+    functions: &'a [FuncId],
+
     upcoming_blocks: &'a mut HashMap<u32, Block>,
     next_instruction: u32,
 }
@@ -119,26 +193,15 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
     fn finalize(&mut self) {
         self.builder.ins().return_(&[]);
         self.builder.finalize();
-
-        let func = &*self.builder.func;
-        let flags =
-            cranelift::codegen::settings::Flags::new(cranelift::codegen::settings::builder());
-        cranelift::codegen::verifier::verify_function(&func, &flags)
-            .expect("internal error: generated invalid cranelift ir");
     }
 
     fn emit_call(&mut self, idx: usize) {
         let func_ref = *self
-            .functions
+            .func_refs
             .entry(idx.try_into().unwrap())
             .or_insert_with(|| {
-                let func_data = ir::ExtFuncData {
-                    name: func_name(idx),
-                    signature: self.sig,
-                    colocated: false,
-                };
-
-                self.builder.import_function(func_data)
+                self.module
+                    .declare_func_in_func(self.functions[idx], &mut self.builder.func)
             });
 
         let mem_start = self.builder.use_var(Variable::with_u32(VAR_MEM_START));
@@ -305,12 +368,17 @@ impl<'a> Emitter<'a> {
 }
 
 pub struct Runner {
+    func_id: FuncId,
+    module: JITModule,
     memory: Vec<i64>,
 }
 
 impl crate::Runner for Runner {
     fn step(&mut self) {
-        todo!()
+        let ptr = self.module.get_finalized_function(self.func_id);
+        let main: fn(*mut i64) = unsafe { mem::transmute(ptr) };
+
+        main(self.memory.as_mut_ptr());
     }
 
     fn memory(&self) -> &[i64] {

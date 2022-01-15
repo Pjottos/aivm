@@ -3,7 +3,7 @@ use crate::{
     Runner,
 };
 
-use std::collections::HashSet;
+use std::{collections::HashSet, num::NonZeroUsize};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
@@ -135,6 +135,8 @@ impl<G: CodeGenerator> Compiler<G> {
             self.compile_funcs.insert(f);
             self.call_stack.pop();
         }
+
+        self.gen.begin(NonZeroUsize::new(func_count).unwrap());
 
         for (f, func) in self
             .compile_funcs
@@ -284,6 +286,14 @@ mod tests {
 
         let gen = crate::codegen::Cranelift::new();
         let mut compiler = Compiler::new(gen);
-        compiler.compile(&code, vec![0; 128]);
+        let mut runner = compiler.compile(&code, vec![0; 128]);
+
+        thread_rng().fill(&mut code);
+        let mut runner2 = compiler.compile(&code, vec![0; 128]);
+
+        drop(compiler);
+
+        runner2.step();
+        runner.step();
     }
 }
