@@ -3,30 +3,7 @@ use crate::{
     DefaultFrequencies, InstructionFrequencies, Runner,
 };
 
-use std::{collections::HashSet, num::NonZeroUsize};
-
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy)]
-pub struct BranchParams(u32);
-
-impl BranchParams {
-    #[inline]
-    pub fn compare_kind(self) -> CompareKind {
-        use CompareKind::*;
-
-        match self.0 >> 30 {
-            0 => Eq,
-            1 => Neq,
-            2 => Gt,
-            _ => Lt,
-        }
-    }
-
-    #[inline]
-    pub fn offset(self) -> u32 {
-        self.0 & !(3 << 30)
-    }
-}
+use std::{collections::HashSet, num::NonZeroU32};
 
 #[derive(Debug, Clone, Copy)]
 pub enum CompareKind {
@@ -39,9 +16,9 @@ pub enum CompareKind {
 pub struct Compiler<G: CodeGenerator> {
     gen: G,
     funcs: Vec<Function>,
-    remaining_funcs: Vec<(usize, usize)>,
-    call_stack: Vec<usize>,
-    compile_funcs: HashSet<usize>,
+    remaining_funcs: Vec<(u32, u32)>,
+    call_stack: Vec<u32>,
+    compile_funcs: HashSet<u32>,
 }
 
 impl<G: CodeGenerator + 'static> Compiler<G> {
@@ -69,9 +46,9 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
         // Count the amount of functions and how many instructions they contain.
         self.funcs.push(Function::new(0));
         for (i, instruction) in code.iter().copied().enumerate() {
-            let (kind, _, _, _) = instruction_components(instruction);
+            let kind = instruction as u16;
 
-            if kind <= F::END_FUNC {
+            if kind < F::END_FUNC {
                 self.funcs.push(Function::new(i + 1));
                 continue;
             }
@@ -79,8 +56,8 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
             self.funcs.last_mut().unwrap().instruction_count += 1;
         }
 
-        let func_count = self.funcs.len();
-        let memory_size = memory.len();
+        let func_count = u32::try_from(self.funcs.len()).unwrap();
+        let memory_size = u32::try_from(memory.len()).unwrap();
 
         // Detect recursive function calls and prevent them from being emitted.
         // The call that would complete the cycle is blocked.
@@ -88,21 +65,21 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
         'funcs: while let Some((f, offset, func)) = self
             .remaining_funcs
             .pop()
-            .map(|(f, offset)| (f, offset, &mut self.funcs[f]))
+            .map(|(f, offset)| (f, offset, &mut self.funcs[usize::try_from(f).unwrap()]))
         {
-            let start = func.first_instruction + offset;
-            let end = func.first_instruction + func.instruction_count;
+            let start = func.first_instruction + usize::try_from(offset).unwrap();
+            let end = func.first_instruction + usize::try_from(func.instruction_count).unwrap();
             for (i, instruction) in code[start..end]
                 .iter()
                 .copied()
                 .enumerate()
-                .map(|(i, ins)| (i + offset, ins))
+                .map(|(i, ins)| (u32::try_from(i).unwrap() + offset, ins))
             {
-                let (mut kind, dst, src, imm) = instruction_components(instruction);
+                let mut kind = instruction as u16;
 
                 kind -= F::END_FUNC;
-                if kind <= F::CALL {
-                    let idx = calc_call_idx(imm, src, dst, func_count);
+                if kind < F::CALL {
+                    let idx = (instruction >> 32) as u32 % func_count;
 
                     if idx != f && !self.call_stack.contains(&idx) {
                         self.call_stack.push(f);
@@ -120,20 +97,27 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
             self.call_stack.pop();
         }
 
-        self.gen.begin(NonZeroUsize::new(func_count).unwrap());
+        self.gen.begin(NonZeroU32::new(func_count).unwrap());
 
         for (f, func) in self
             .compile_funcs
             .iter()
             .copied()
-            .map(|f| (f, &self.funcs[f]))
+            .map(|f| (f, &self.funcs[usize::try_from(f).unwrap()]))
         {
             let mut emitter = self.gen.begin_function(f);
 
             let start = func.first_instruction;
-            let end = func.first_instruction + func.instruction_count;
+            let end = func.first_instruction + usize::try_from(func.instruction_count).unwrap();
             for (i, instruction) in code[start..end].iter().copied().enumerate() {
-                let (mut kind, dst, src, imm) = instruction_components(instruction);
+                let mut kind = instruction as u16;
+
+                let a = (instruction >> 16) as u8;
+                let b = (instruction >> 24) as u8;
+                let imm = (instruction >> 32) as u32;
+
+                let c = (instruction >> 32) as u8;
+                let d = (instruction >> 48) as u8;
 
                 emitter.prepare_emit();
 
@@ -141,7 +125,7 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
                 kind -= F::END_FUNC;
 
                 if cmp_freq(&mut kind, F::CALL) {
-                    let idx = calc_call_idx(imm, src, dst, func_count);
+                    let idx = imm % func_count;
 
                     if !func.blocked_calls.contains(&idx) {
                         emitter.emit_call(idx);
@@ -150,53 +134,82 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
                         emitter.emit_nop();
                     }
                 } else if cmp_freq(&mut kind, F::INT_ADD) {
-                    emitter.emit_int_add(dst, src);
+                    emitter.emit_int_add(a, b, c);
                 } else if cmp_freq(&mut kind, F::INT_SUB) {
-                    emitter.emit_int_sub(dst, src);
+                    emitter.emit_int_sub(a, b, c);
                 } else if cmp_freq(&mut kind, F::INT_MUL) {
-                    emitter.emit_int_mul(dst, src);
+                    emitter.emit_int_mul(a, b, c);
                 } else if cmp_freq(&mut kind, F::INT_MUL_HIGH) {
-                    emitter.emit_int_mul_high(dst, src);
+                    emitter.emit_int_mul_high(a, b, c);
                 } else if cmp_freq(&mut kind, F::INT_MUL_HIGH_UNSIGNED) {
-                    emitter.emit_int_mul_high_unsigned(dst, src);
+                    emitter.emit_int_mul_high_unsigned(a, b, c);
                 } else if cmp_freq(&mut kind, F::INT_NEG) {
-                    emitter.emit_int_neg(dst);
+                    emitter.emit_int_neg(a, b);
+                } else if cmp_freq(&mut kind, F::INT_ABS) {
+                    emitter.emit_int_abs(a, b);
+                } else if cmp_freq(&mut kind, F::INT_INC) {
+                    emitter.emit_int_inc(a);
+                } else if cmp_freq(&mut kind, F::INT_DEC) {
+                    emitter.emit_int_dec(a);
+                } else if cmp_freq(&mut kind, F::INT_MIN) {
+                    emitter.emit_int_min(a, b, c);
+                } else if cmp_freq(&mut kind, F::INT_MAX) {
+                    emitter.emit_int_max(a, b, c);
                 } else if cmp_freq(&mut kind, F::BIT_SWAP) {
-                    emitter.emit_bit_swap(dst, src);
+                    emitter.emit_bit_swap(a, b);
                 } else if cmp_freq(&mut kind, F::BIT_OR) {
-                    emitter.emit_bit_or(dst, src);
+                    emitter.emit_bit_or(a, b, c);
                 } else if cmp_freq(&mut kind, F::BIT_AND) {
-                    emitter.emit_bit_and(dst, src);
+                    emitter.emit_bit_and(a, b, c);
                 } else if cmp_freq(&mut kind, F::BIT_XOR) {
-                    emitter.emit_bit_xor(dst, src);
+                    emitter.emit_bit_xor(a, b, c);
+                } else if cmp_freq(&mut kind, F::BIT_NOT) {
+                    emitter.emit_bit_not(a, b);
                 } else if cmp_freq(&mut kind, F::BIT_SHIFT_L) {
-                    emitter.emit_bit_shift_left(dst, imm as u8 & 0x3F);
+                    emitter.emit_bit_shift_left(a, b, c & 0x3F);
                 } else if cmp_freq(&mut kind, F::BIT_SHIFT_R) {
-                    emitter.emit_bit_shift_right(dst, imm as u8 & 0x3F);
+                    emitter.emit_bit_shift_right(a, b, c & 0x3F);
                 } else if cmp_freq(&mut kind, F::BIT_ROT_L) {
-                    emitter.emit_bit_rotate_left(dst, imm as u8 & 0x3F);
+                    emitter.emit_bit_rotate_left(a, b, c & 0x3F);
                 } else if cmp_freq(&mut kind, F::BIT_ROT_R) {
-                    emitter.emit_bit_rotate_right(dst, imm as u8 & 0x3F);
-                } else if cmp_freq(&mut kind, F::COND_BRANCH) {
-                    let max_offset = (func.instruction_count - i - 1) & ((1 << 30) - 1);
+                    emitter.emit_bit_rotate_right(a, b, c & 0x3F);
+                } else if cmp_freq(&mut kind, F::BIT_SELECT) {
+                    emitter.emit_bit_select(a, b, c, d);
+                } else if cmp_freq(&mut kind, F::BIT_POPCNT) {
+                    emitter.emit_bit_popcnt(a, b);
+                } else if cmp_freq(&mut kind, F::BIT_REVERSE) {
+                    emitter.emit_bit_reverse(a, b);
+                } else if cmp_freq(&mut kind, F::BRANCH_CMP) {
+                    if let Some(offset) = branch_offset(imm, func, i as u32) {
+                        let compare_kind = match a & 3 {
+                            0 => CompareKind::Eq,
+                            1 => CompareKind::Neq,
+                            2 => CompareKind::Gt,
+                            _ => CompareKind::Lt,
+                        };
 
-                    if max_offset > 1 {
-                        let offset = imm % max_offset as u32;
-                        if offset > 1 {
-                            let raw_params = (imm & (3 << 30)) | offset;
-                            emitter.emit_cond_branch(dst, src, BranchParams(raw_params));
-                        } else {
-                            emitter.emit_nop();
-                        }
+                        emitter.emit_branch_cmp(b, c, compare_kind, offset);
+                    } else {
+                        emitter.emit_nop();
+                    }
+                } else if cmp_freq(&mut kind, F::BRANCH_ZERO) {
+                    if let Some(offset) = branch_offset(imm, func, i as u32) {
+                        emitter.emit_branch_zero(a, offset);
+                    } else {
+                        emitter.emit_nop();
+                    }
+                } else if cmp_freq(&mut kind, F::BRANCH_NON_ZERO) {
+                    if let Some(offset) = branch_offset(imm, func, i as u32) {
+                        emitter.emit_branch_non_zero(a, offset);
                     } else {
                         emitter.emit_nop();
                     }
                 } else if cmp_freq(&mut kind, F::MEM_LOAD) {
-                    let addr = imm as usize % memory_size;
-                    emitter.emit_mem_load(dst, addr);
+                    let addr = imm % memory_size;
+                    emitter.emit_mem_load(a, addr);
                 } else if cmp_freq(&mut kind, F::MEM_STORE) {
-                    let addr = imm as usize % memory_size;
-                    emitter.emit_mem_store(addr, src);
+                    let addr = imm % memory_size;
+                    emitter.emit_mem_store(addr, a);
                 } else {
                     unreachable!("instruction frequencies don't add up to u16::MAX")
                 }
@@ -217,23 +230,8 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
 }
 
 #[inline]
-fn instruction_components(instruction: u64) -> (u16, u8, u8, u32) {
-    let kind = instruction as u16;
-    let dst = (instruction >> 16) as u8;
-    let src = (instruction >> 24) as u8;
-    let imm = (instruction >> 32) as u32;
-
-    (kind, dst, src, imm)
-}
-
-#[inline]
-fn calc_call_idx(imm: u32, src: u8, dst: u8, func_count: usize) -> usize {
-    (imm as usize | ((src as usize) >> 32) | ((dst as usize) >> 40)) % func_count
-}
-
-#[inline]
 fn cmp_freq(kind: &mut u16, freq: u16) -> bool {
-    if *kind <= freq {
+    if *kind < freq {
         true
     } else {
         *kind -= freq;
@@ -241,10 +239,24 @@ fn cmp_freq(kind: &mut u16, freq: u16) -> bool {
     }
 }
 
+#[inline]
+fn branch_offset(imm: u32, func: &Function, cur_offset: u32) -> Option<u32> {
+    let max_offset = func.instruction_count - cur_offset - 1;
+
+    if max_offset > 1 {
+        let offset = imm % max_offset;
+        if offset > 1 {
+            return Some(offset);
+        }
+    }
+
+    None
+}
+
 struct Function {
     first_instruction: usize,
-    instruction_count: usize,
-    blocked_calls: Vec<usize>,
+    instruction_count: u32,
+    blocked_calls: Vec<u32>,
 }
 
 impl Function {

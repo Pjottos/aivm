@@ -1,7 +1,4 @@
-use crate::{
-    codegen,
-    compile::{BranchParams, CompareKind},
-};
+use crate::{codegen, compile::CompareKind};
 
 use cranelift::{
     codegen::{
@@ -16,7 +13,7 @@ use cranelift::{
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{default_libcall_names, FuncId, Linkage, Module};
 
-use std::{collections::HashMap, convert::TryInto, mem, num::NonZeroUsize};
+use std::{collections::HashMap, convert::TryInto, mem, num::NonZeroU32};
 
 const VAR_MEM_START: u32 = 256;
 /// Temporary, for use in the swap instruction.

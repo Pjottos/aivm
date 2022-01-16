@@ -11,9 +11,9 @@ pub trait CodeGenerator: private::CodeGeneratorImpl {}
 impl<T: private::CodeGeneratorImpl> CodeGenerator for T {}
 
 pub(crate) mod private {
-    use crate::{compile::BranchParams, Runner};
+    use crate::{compile::CompareKind, Runner};
 
-    use std::num::NonZeroUsize;
+    use std::num::NonZeroU32;
 
     pub trait CodeGeneratorImpl {
         type Runner: Runner + 'static;
@@ -21,8 +21,8 @@ pub(crate) mod private {
         where
             Self: 'a;
 
-        fn begin(&mut self, function_count: NonZeroUsize);
-        fn begin_function(&mut self, idx: usize) -> Self::Emitter<'_>;
+        fn begin(&mut self, function_count: NonZeroU32);
+        fn begin_function(&mut self, idx: u32) -> Self::Emitter<'_>;
         fn finish(&mut self, memory: Vec<i64>) -> Self::Runner;
     }
 
@@ -30,28 +30,39 @@ pub(crate) mod private {
         fn prepare_emit(&mut self) {}
         fn finalize(&mut self) {}
 
-        fn emit_call(&mut self, idx: usize);
+        fn emit_call(&mut self, idx: u32);
         fn emit_nop(&mut self);
 
-        fn emit_int_add(&mut self, dst: u8, src: u8);
-        fn emit_int_sub(&mut self, dst: u8, src: u8);
-        fn emit_int_mul(&mut self, dst: u8, src: u8);
-        fn emit_int_mul_high(&mut self, dst: u8, src: u8);
-        fn emit_int_mul_high_unsigned(&mut self, dst: u8, src: u8);
-        fn emit_int_neg(&mut self, dst: u8);
+        fn emit_int_add(&mut self, dst: u8, a: u8, b: u8);
+        fn emit_int_sub(&mut self, dst: u8, a: u8, b: u8);
+        fn emit_int_mul(&mut self, dst: u8, a: u8, b: u8);
+        fn emit_int_mul_high(&mut self, dst: u8, a: u8, b: u8);
+        fn emit_int_mul_high_unsigned(&mut self, dst: u8, a: u8, b: u8);
+        fn emit_int_neg(&mut self, dst: u8, src: u8);
+        fn emit_int_abs(&mut self, dst: u8, src: u8);
+        fn emit_int_inc(&mut self, dst: u8);
+        fn emit_int_dec(&mut self, dst: u8);
+        fn emit_int_min(&mut self, dst: u8, a: u8, b: u8);
+        fn emit_int_max(&mut self, dst: u8, a: u8, b: u8);
 
         fn emit_bit_swap(&mut self, dst: u8, src: u8);
-        fn emit_bit_or(&mut self, dst: u8, src: u8);
-        fn emit_bit_and(&mut self, dst: u8, src: u8);
-        fn emit_bit_xor(&mut self, dst: u8, src: u8);
-        fn emit_bit_shift_left(&mut self, dst: u8, amount: u8);
-        fn emit_bit_shift_right(&mut self, dst: u8, amount: u8);
-        fn emit_bit_rotate_left(&mut self, dst: u8, amount: u8);
-        fn emit_bit_rotate_right(&mut self, dst: u8, amount: u8);
+        fn emit_bit_or(&mut self, dst: u8, a: u8, b: u8);
+        fn emit_bit_and(&mut self, dst: u8, a: u8, b: u8);
+        fn emit_bit_xor(&mut self, dst: u8, a: u8, b: u8);
+        fn emit_bit_not(&mut self, dst: u8, src: u8);
+        fn emit_bit_shift_left(&mut self, dst: u8, src: u8, amount: u8);
+        fn emit_bit_shift_right(&mut self, dst: u8, src: u8, amount: u8);
+        fn emit_bit_rotate_left(&mut self, dst: u8, src: u8, amount: u8);
+        fn emit_bit_rotate_right(&mut self, dst: u8, src: u8, amount: u8);
+        fn emit_bit_select(&mut self, dst: u8, mask: u8, a: u8, b: u8);
+        fn emit_bit_popcnt(&mut self, dst: u8, src: u8);
+        fn emit_bit_reverse(&mut self, dst: u8, src: u8);
 
-        fn emit_cond_branch(&mut self, a: u8, b: u8, params: BranchParams);
+        fn emit_branch_cmp(&mut self, a: u8, b: u8, compare_kind: CompareKind, offset: u32);
+        fn emit_branch_zero(&mut self, src: u8, offset: u32);
+        fn emit_branch_non_zero(&mut self, src: u8, offset: u32);
 
-        fn emit_mem_load(&mut self, dst: u8, addr: usize);
-        fn emit_mem_store(&mut self, addr: usize, src: u8);
+        fn emit_mem_load(&mut self, dst: u8, addr: u32);
+        fn emit_mem_store(&mut self, addr: u32, src: u8);
     }
 }
