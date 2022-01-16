@@ -2,8 +2,10 @@
 
 pub mod codegen;
 mod compile;
+mod frequency;
 
 pub use compile::Compiler;
+pub use frequency::{DefaultFrequencies, InstructionFrequencies};
 
 pub trait Runner {
     fn step(&mut self);

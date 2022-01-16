@@ -1,6 +1,6 @@
 use crate::{
     codegen::{private::Emitter, CodeGenerator},
-    Runner,
+    DefaultFrequencies, InstructionFrequencies, Runner,
 };
 
 use std::{collections::HashSet, num::NonZeroUsize};
@@ -36,30 +36,6 @@ pub enum CompareKind {
     Lt,
 }
 
-const FREQ_END_FUNC: u16 = 3449;
-const FREQ_CALL: u16 = 3449;
-
-const FREQ_INT_ADD: u16 = 3449;
-const FREQ_INT_SUB: u16 = 3449;
-const FREQ_INT_MUL: u16 = 3453;
-const FREQ_INT_MUL_HIGH: u16 = 3449;
-const FREQ_INT_MUL_HIGH_UNSIGNED: u16 = 3449;
-const FREQ_INT_NEG: u16 = 3449;
-
-const FREQ_BIT_SWAP: u16 = 3449;
-const FREQ_BIT_OR: u16 = 3449;
-const FREQ_BIT_AND: u16 = 3449;
-const FREQ_BIT_XOR: u16 = 3449;
-const FREQ_BIT_SHIFT_L: u16 = 3449;
-const FREQ_BIT_SHIFT_R: u16 = 3449;
-const FREQ_BIT_ROT_L: u16 = 3449;
-const FREQ_BIT_ROT_R: u16 = 3449;
-
-const FREQ_COND_BRANCH: u16 = 3449;
-
-const FREQ_MEM_LOAD: u16 = 3449;
-const FREQ_MEM_STORE: u16 = 3449;
-
 pub struct Compiler<G: CodeGenerator> {
     gen: G,
     funcs: Vec<Function>,
@@ -68,7 +44,7 @@ pub struct Compiler<G: CodeGenerator> {
     compile_funcs: HashSet<usize>,
 }
 
-impl<G: CodeGenerator> Compiler<G> {
+impl<G: CodeGenerator + 'static> Compiler<G> {
     pub fn new(gen: G) -> Self {
         Self {
             gen,
@@ -80,6 +56,14 @@ impl<G: CodeGenerator> Compiler<G> {
     }
 
     pub fn compile(&mut self, code: &[u64], memory: Vec<i64>) -> impl Runner + 'static {
+        self.compile_with_frequencies::<DefaultFrequencies>(code, memory)
+    }
+
+    pub fn compile_with_frequencies<F: InstructionFrequencies>(
+        &mut self,
+        code: &[u64],
+        memory: Vec<i64>,
+    ) -> impl Runner + 'static {
         self.clear();
 
         // Count the amount of functions and how many instructions they contain.
@@ -87,7 +71,7 @@ impl<G: CodeGenerator> Compiler<G> {
         for (i, instruction) in code.iter().copied().enumerate() {
             let (kind, _, _, _) = instruction_components(instruction);
 
-            if kind <= FREQ_END_FUNC {
+            if kind <= F::END_FUNC {
                 self.funcs.push(Function::new(i + 1));
                 continue;
             }
@@ -116,8 +100,8 @@ impl<G: CodeGenerator> Compiler<G> {
             {
                 let (mut kind, dst, src, imm) = instruction_components(instruction);
 
-                kind -= FREQ_END_FUNC;
-                if kind <= FREQ_CALL {
+                kind -= F::END_FUNC;
+                if kind <= F::CALL {
                     let idx = calc_call_idx(imm, src, dst, func_count);
 
                     if idx != f && !self.call_stack.contains(&idx) {
@@ -154,9 +138,9 @@ impl<G: CodeGenerator> Compiler<G> {
                 emitter.prepare_emit();
 
                 // Never included in the function body.
-                kind -= FREQ_END_FUNC;
+                kind -= F::END_FUNC;
 
-                if cmp_freq(&mut kind, FREQ_CALL) {
+                if cmp_freq(&mut kind, F::CALL) {
                     let idx = calc_call_idx(imm, src, dst, func_count);
 
                     if !func.blocked_calls.contains(&idx) {
@@ -165,35 +149,35 @@ impl<G: CodeGenerator> Compiler<G> {
                         // Ensure instruction count remains the same, for branches.
                         emitter.emit_nop();
                     }
-                } else if cmp_freq(&mut kind, FREQ_INT_ADD) {
+                } else if cmp_freq(&mut kind, F::INT_ADD) {
                     emitter.emit_int_add(dst, src);
-                } else if cmp_freq(&mut kind, FREQ_INT_SUB) {
+                } else if cmp_freq(&mut kind, F::INT_SUB) {
                     emitter.emit_int_sub(dst, src);
-                } else if cmp_freq(&mut kind, FREQ_INT_MUL) {
+                } else if cmp_freq(&mut kind, F::INT_MUL) {
                     emitter.emit_int_mul(dst, src);
-                } else if cmp_freq(&mut kind, FREQ_INT_MUL_HIGH) {
+                } else if cmp_freq(&mut kind, F::INT_MUL_HIGH) {
                     emitter.emit_int_mul_high(dst, src);
-                } else if cmp_freq(&mut kind, FREQ_INT_MUL_HIGH_UNSIGNED) {
+                } else if cmp_freq(&mut kind, F::INT_MUL_HIGH_UNSIGNED) {
                     emitter.emit_int_mul_high_unsigned(dst, src);
-                } else if cmp_freq(&mut kind, FREQ_INT_NEG) {
+                } else if cmp_freq(&mut kind, F::INT_NEG) {
                     emitter.emit_int_neg(dst);
-                } else if cmp_freq(&mut kind, FREQ_BIT_SWAP) {
+                } else if cmp_freq(&mut kind, F::BIT_SWAP) {
                     emitter.emit_bit_swap(dst, src);
-                } else if cmp_freq(&mut kind, FREQ_BIT_OR) {
+                } else if cmp_freq(&mut kind, F::BIT_OR) {
                     emitter.emit_bit_or(dst, src);
-                } else if cmp_freq(&mut kind, FREQ_BIT_AND) {
+                } else if cmp_freq(&mut kind, F::BIT_AND) {
                     emitter.emit_bit_and(dst, src);
-                } else if cmp_freq(&mut kind, FREQ_BIT_XOR) {
+                } else if cmp_freq(&mut kind, F::BIT_XOR) {
                     emitter.emit_bit_xor(dst, src);
-                } else if cmp_freq(&mut kind, FREQ_BIT_SHIFT_L) {
+                } else if cmp_freq(&mut kind, F::BIT_SHIFT_L) {
                     emitter.emit_bit_shift_left(dst, imm as u8 & 0x3F);
-                } else if cmp_freq(&mut kind, FREQ_BIT_SHIFT_R) {
+                } else if cmp_freq(&mut kind, F::BIT_SHIFT_R) {
                     emitter.emit_bit_shift_right(dst, imm as u8 & 0x3F);
-                } else if cmp_freq(&mut kind, FREQ_BIT_ROT_L) {
+                } else if cmp_freq(&mut kind, F::BIT_ROT_L) {
                     emitter.emit_bit_rotate_left(dst, imm as u8 & 0x3F);
-                } else if cmp_freq(&mut kind, FREQ_BIT_ROT_R) {
+                } else if cmp_freq(&mut kind, F::BIT_ROT_R) {
                     emitter.emit_bit_rotate_right(dst, imm as u8 & 0x3F);
-                } else if cmp_freq(&mut kind, FREQ_COND_BRANCH) {
+                } else if cmp_freq(&mut kind, F::COND_BRANCH) {
                     let max_offset = (func.instruction_count - i - 1) & ((1 << 30) - 1);
 
                     if max_offset > 1 {
@@ -207,10 +191,10 @@ impl<G: CodeGenerator> Compiler<G> {
                     } else {
                         emitter.emit_nop();
                     }
-                } else if cmp_freq(&mut kind, FREQ_MEM_LOAD) {
+                } else if cmp_freq(&mut kind, F::MEM_LOAD) {
                     let addr = imm as usize % memory_size;
                     emitter.emit_mem_load(dst, addr);
-                } else if cmp_freq(&mut kind, FREQ_MEM_STORE) {
+                } else if cmp_freq(&mut kind, F::MEM_STORE) {
                     let addr = imm as usize % memory_size;
                     emitter.emit_mem_store(addr, src);
                 } else {
