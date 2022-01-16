@@ -211,7 +211,7 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
                     let addr = imm % memory_size;
                     emitter.emit_mem_store(addr, a);
                 } else {
-                    unreachable!("instruction frequencies don't add up to u16::MAX")
+                    unreachable!("instruction frequencies don't add up to 65536")
                 }
             }
 
@@ -282,6 +282,7 @@ mod tests {
 
         let gen = crate::codegen::Cranelift::new();
         let mut compiler = Compiler::new(gen);
+        code[0] = u64::MAX;
         let mut runner = compiler.compile(&code, vec![0; 128]);
 
         thread_rng().fill(&mut code);

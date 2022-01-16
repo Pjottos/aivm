@@ -4,7 +4,7 @@ pub trait InstructionFrequencies {
 
     const INT_ADD: u16 = 2184;
     const INT_SUB: u16 = 2184;
-    const INT_MUL: u16 = 2199;
+    const INT_MUL: u16 = 2200;
     const INT_MUL_HIGH: u16 = 2184;
     const INT_MUL_HIGH_UNSIGNED: u16 = 2184;
     const INT_NEG: u16 = 2184;
