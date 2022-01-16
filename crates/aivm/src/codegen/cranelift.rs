@@ -24,6 +24,7 @@ const VAR_MEM_START: u32 = 256;
 /// Temporary, for use in the swap instruction.
 const VAR_TMP: u32 = 257;
 
+/// A code generator that uses cranelift to JIT compile AIVM code into native machine code.
 pub struct Cranelift {
     func_ctx: FunctionBuilderContext,
     func_refs: HashMap<u32, ir::entities::FuncRef>,
@@ -117,6 +118,7 @@ impl codegen::private::CodeGeneratorImpl for Cranelift {
 }
 
 impl Cranelift {
+    /// Create a new generator.
     pub fn new() -> Self {
         let module = Self::create_jit_module();
         let ctx = module.make_context();

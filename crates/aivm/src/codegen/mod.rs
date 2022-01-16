@@ -3,9 +3,13 @@ mod cranelift;
 mod interpreter;
 
 #[cfg(feature = "jit-cranelift")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "jit-cranelift")))]
 pub use self::cranelift::Cranelift;
 pub use interpreter::Interpreter;
 
+/// A converter to translate VM instructions to a form that can be executed on the host platform.
+///
+/// This trait is not meant to implemented outside this crate.
 pub trait CodeGenerator: private::CodeGeneratorImpl {}
 
 impl<T: private::CodeGeneratorImpl> CodeGenerator for T {}

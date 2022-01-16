@@ -9,6 +9,10 @@ homepage = "https://github.com/Pjottos/aivm"
 documentation = "https://docs.rs/aivm"
 repository = "https://github.com/Pjottos/aivm"
 
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "doc_cfg"]
+
 [dependencies]
 cranelift = { version = "0.80", optional = true }
 cranelift-jit = { version = "0.80", optional = true }

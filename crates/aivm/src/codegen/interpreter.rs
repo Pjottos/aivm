@@ -5,6 +5,7 @@ use std::{
     num::{NonZeroU32, Wrapping},
 };
 
+/// A code generator for creating a runner that simply interprets VM instructions one by one.
 pub struct Interpreter {
     functions: Vec<Vec<Instruction>>,
 }
@@ -36,6 +37,7 @@ impl codegen::private::CodeGeneratorImpl for Interpreter {
 }
 
 impl Interpreter {
+    /// Create a new generator.
     pub fn new() -> Self {
         Self { functions: vec![] }
     }

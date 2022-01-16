@@ -13,6 +13,9 @@ pub enum CompareKind {
     Lt,
 }
 
+/// Structure for compiling AIVM code.
+///
+/// It can be used for multiple compilations to reuse allocations.
 pub struct Compiler<G: CodeGenerator> {
     gen: G,
     funcs: Vec<Function>,
@@ -22,6 +25,7 @@ pub struct Compiler<G: CodeGenerator> {
 }
 
 impl<G: CodeGenerator + 'static> Compiler<G> {
+    /// Create a [Compiler] that will use the given code generator.
     pub fn new(gen: G) -> Self {
         Self {
             gen,
@@ -32,10 +36,12 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
         }
     }
 
+    /// Compile the given code and use the given memory to create a runner.
     pub fn compile(&mut self, code: &[u64], memory: Vec<i64>) -> impl Runner + 'static {
         self.compile_with_frequencies::<DefaultFrequencies>(code, memory)
     }
 
+    /// Like [compile](Self::compile), but using custom instruction frequencies.
     pub fn compile_with_frequencies<F: InstructionFrequencies>(
         &mut self,
         code: &[u64],
