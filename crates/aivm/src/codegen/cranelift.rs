@@ -13,7 +13,12 @@ use cranelift::{
 use cranelift_jit::{JITBuilder, JITModule};
 use cranelift_module::{default_libcall_names, FuncId, Linkage, Module};
 
-use std::{collections::HashMap, convert::TryInto, mem, num::NonZeroU32};
+use std::{
+    collections::HashMap,
+    convert::{TryFrom, TryInto},
+    mem,
+    num::NonZeroU32,
+};
 
 const VAR_MEM_START: u32 = 256;
 /// Temporary, for use in the swap instruction.
@@ -26,19 +31,19 @@ pub struct Cranelift {
     upcoming_blocks: HashMap<u32, Block>,
     module: JITModule,
     ctx: Context,
-    cur_function: Option<usize>,
+    cur_function: Option<u32>,
 }
 
 impl codegen::private::CodeGeneratorImpl for Cranelift {
     type Runner = Runner;
     type Emitter<'a> = Emitter<'a>;
 
-    fn begin(&mut self, function_count: NonZeroUsize) {
+    fn begin(&mut self, function_count: NonZeroU32) {
         let function_count = function_count.get();
 
         self.cur_function = None;
         self.functions.clear();
-        self.functions.reserve(function_count);
+        self.functions.reserve(function_count.try_into().unwrap());
 
         let sig = self.make_signature();
         let main_func = self
@@ -47,7 +52,7 @@ impl codegen::private::CodeGeneratorImpl for Cranelift {
             .unwrap();
         self.functions.push(main_func);
 
-        for i in 1u32..function_count.try_into().unwrap() {
+        for i in 1..function_count {
             let func = self
                 .module
                 .declare_function(&i.to_string(), Linkage::Local, &sig)
@@ -56,7 +61,7 @@ impl codegen::private::CodeGeneratorImpl for Cranelift {
         }
     }
 
-    fn begin_function(&mut self, idx: usize) -> Self::Emitter<'_> {
+    fn begin_function(&mut self, idx: u32) -> Self::Emitter<'_> {
         self.define_cur_function();
         self.cur_function = Some(idx);
 
@@ -65,7 +70,8 @@ impl codegen::private::CodeGeneratorImpl for Cranelift {
         self.module.clear_context(&mut self.ctx);
 
         self.ctx.func.signature = self.make_signature();
-        self.ctx.func.name = ExternalName::user(0, self.functions[idx].as_u32());
+        self.ctx.func.name =
+            ExternalName::user(0, self.functions[usize::try_from(idx).unwrap()].as_u32());
 
         let mut builder = FunctionBuilder::new(&mut self.ctx.func, &mut self.func_ctx);
 
@@ -137,7 +143,7 @@ impl Cranelift {
         if let Some(f) = self.cur_function {
             self.module
                 .define_function(
-                    self.functions[f],
+                    self.functions[usize::try_from(f).unwrap()],
                     &mut self.ctx,
                     &mut NullTrapSink {},
                     &mut NullStackMapSink {},
@@ -192,14 +198,13 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
         self.builder.finalize();
     }
 
-    fn emit_call(&mut self, idx: usize) {
-        let func_ref = *self
-            .func_refs
-            .entry(idx.try_into().unwrap())
-            .or_insert_with(|| {
-                self.module
-                    .declare_func_in_func(self.functions[idx], &mut self.builder.func)
-            });
+    fn emit_call(&mut self, idx: u32) {
+        let func_ref = *self.func_refs.entry(idx).or_insert_with(|| {
+            self.module.declare_func_in_func(
+                self.functions[usize::try_from(idx).unwrap()],
+                &mut self.builder.func,
+            )
+        });
 
         let mem_start = self.builder.use_var(Variable::with_u32(VAR_MEM_START));
         self.builder.ins().call(func_ref, &[mem_start]);
@@ -207,44 +212,89 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
 
     fn emit_nop(&mut self) {}
 
-    fn emit_int_add(&mut self, dst: u8, src: u8) {
-        let a = self.use_var(dst);
-        let b = self.use_var(src);
+    fn emit_int_add(&mut self, dst: u8, a: u8, b: u8) {
+        let a = self.use_var(a);
+        let b = self.use_var(b);
         let res = self.builder.ins().iadd(a, b);
         self.builder.def_var(Self::var(dst), res);
     }
 
-    fn emit_int_sub(&mut self, dst: u8, src: u8) {
-        let a = self.use_var(dst);
-        let b = self.use_var(src);
+    fn emit_int_sub(&mut self, dst: u8, a: u8, b: u8) {
+        let a = self.use_var(a);
+        let b = self.use_var(b);
         let res = self.builder.ins().isub(a, b);
         self.builder.def_var(Self::var(dst), res);
     }
 
-    fn emit_int_mul(&mut self, dst: u8, src: u8) {
-        let a = self.use_var(dst);
-        let b = self.use_var(src);
+    fn emit_int_mul(&mut self, dst: u8, a: u8, b: u8) {
+        let a = self.use_var(a);
+        let b = self.use_var(b);
         let res = self.builder.ins().imul(a, b);
         self.builder.def_var(Self::var(dst), res);
     }
 
-    fn emit_int_mul_high(&mut self, dst: u8, src: u8) {
-        let a = self.use_var(dst);
-        let b = self.use_var(src);
+    fn emit_int_mul_high(&mut self, dst: u8, a: u8, b: u8) {
+        let a = self.use_var(a);
+        let b = self.use_var(b);
         let res = self.builder.ins().smulhi(a, b);
         self.builder.def_var(Self::var(dst), res);
     }
 
-    fn emit_int_mul_high_unsigned(&mut self, dst: u8, src: u8) {
-        let a = self.use_var(dst);
-        let b = self.use_var(src);
+    fn emit_int_mul_high_unsigned(&mut self, dst: u8, a: u8, b: u8) {
+        let a = self.use_var(a);
+        let b = self.use_var(b);
         let res = self.builder.ins().umulhi(a, b);
         self.builder.def_var(Self::var(dst), res);
     }
 
-    fn emit_int_neg(&mut self, dst: u8) {
+    fn emit_int_neg(&mut self, dst: u8, src: u8) {
+        let src = self.use_var(src);
+        let res = self.builder.ins().ineg(src);
+        self.builder.def_var(Self::var(dst), res);
+    }
+
+    fn emit_int_abs(&mut self, dst: u8, src: u8) {
+        let src = self.use_var(src);
+
+        // FIXME: should use the iabs instruction but the x64 backend does not support it
+        let shifted = self.builder.ins().sshr_imm(src, 31);
+        let sum = self.builder.ins().iadd(src, shifted);
+        let res = self.builder.ins().bxor(sum, shifted);
+
+        self.builder.def_var(Self::var(dst), res);
+    }
+
+    fn emit_int_inc(&mut self, dst: u8) {
         let a = self.use_var(dst);
-        let res = self.builder.ins().ineg(a);
+        let res = self.builder.ins().iadd_imm(a, 1);
+        self.builder.def_var(Self::var(dst), res);
+    }
+
+    fn emit_int_dec(&mut self, dst: u8) {
+        let a = self.use_var(dst);
+        let res = self.builder.ins().iadd_imm(a, -1);
+        self.builder.def_var(Self::var(dst), res);
+    }
+
+    fn emit_int_min(&mut self, dst: u8, a: u8, b: u8) {
+        let a = self.use_var(a);
+        let b = self.use_var(b);
+
+        // FIXME: should use the imin instruction but the x64 backend does not support it
+        let use_a = self.builder.ins().icmp(IntCC::SignedLessThan, a, b);
+        let res = self.builder.ins().select(use_a, a, b);
+
+        self.builder.def_var(Self::var(dst), res);
+    }
+
+    fn emit_int_max(&mut self, dst: u8, a: u8, b: u8) {
+        let a = self.use_var(a);
+        let b = self.use_var(b);
+
+        // FIXME: should use the imax instruction but the x64 backend does not support it
+        let use_a = self.builder.ins().icmp(IntCC::SignedLessThan, b, a);
+        let res = self.builder.ins().select(use_a, a, b);
+
         self.builder.def_var(Self::var(dst), res);
     }
 
@@ -260,88 +310,127 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
         self.builder.def_var(Self::var(src), tmp);
     }
 
-    fn emit_bit_or(&mut self, dst: u8, src: u8) {
-        let a = self.use_var(dst);
-        let b = self.use_var(src);
+    fn emit_bit_or(&mut self, dst: u8, a: u8, b: u8) {
+        let a = self.use_var(a);
+        let b = self.use_var(b);
         let res = self.builder.ins().bor(a, b);
         self.builder.def_var(Self::var(dst), res);
     }
 
-    fn emit_bit_and(&mut self, dst: u8, src: u8) {
-        let a = self.use_var(dst);
-        let b = self.use_var(src);
+    fn emit_bit_and(&mut self, dst: u8, a: u8, b: u8) {
+        let a = self.use_var(a);
+        let b = self.use_var(b);
         let res = self.builder.ins().band(a, b);
         self.builder.def_var(Self::var(dst), res);
     }
 
-    fn emit_bit_xor(&mut self, dst: u8, src: u8) {
-        let a = self.use_var(dst);
-        let b = self.use_var(src);
+    fn emit_bit_xor(&mut self, dst: u8, a: u8, b: u8) {
+        let a = self.use_var(a);
+        let b = self.use_var(b);
         let res = self.builder.ins().bxor(a, b);
         self.builder.def_var(Self::var(dst), res);
     }
 
-    fn emit_bit_shift_left(&mut self, dst: u8, amount: u8) {
-        let a = self.use_var(dst);
+    fn emit_bit_not(&mut self, dst: u8, src: u8) {
+        let src = self.use_var(src);
+        let res = self.builder.ins().bnot(src);
+        self.builder.def_var(Self::var(dst), res);
+    }
+
+    fn emit_bit_shift_left(&mut self, dst: u8, src: u8, amount: u8) {
+        let a = self.use_var(src);
         let res = self.builder.ins().ishl_imm(a, amount as i64);
         self.builder.def_var(Self::var(dst), res);
     }
 
-    fn emit_bit_shift_right(&mut self, dst: u8, amount: u8) {
-        let a = self.use_var(dst);
+    fn emit_bit_shift_right(&mut self, dst: u8, src: u8, amount: u8) {
+        let a = self.use_var(src);
         let res = self.builder.ins().ushr_imm(a, amount as i64);
         self.builder.def_var(Self::var(dst), res);
     }
 
-    fn emit_bit_rotate_left(&mut self, dst: u8, amount: u8) {
-        let a = self.use_var(dst);
+    fn emit_bit_rotate_left(&mut self, dst: u8, src: u8, amount: u8) {
+        let a = self.use_var(src);
         let res = self.builder.ins().rotl_imm(a, amount as i64);
         self.builder.def_var(Self::var(dst), res);
     }
 
-    fn emit_bit_rotate_right(&mut self, dst: u8, amount: u8) {
-        let a = self.use_var(dst);
+    fn emit_bit_rotate_right(&mut self, dst: u8, src: u8, amount: u8) {
+        let a = self.use_var(src);
         let res = self.builder.ins().rotr_imm(a, amount as i64);
         self.builder.def_var(Self::var(dst), res);
     }
 
-    fn emit_cond_branch(&mut self, a: u8, b: u8, params: BranchParams) {
-        let resume_block = self.builder.create_block();
-        let target_instruction = self.next_instruction - 1 + params.offset();
-        let jump_block = *self
-            .upcoming_blocks
-            .entry(target_instruction)
-            .or_insert_with(|| self.builder.create_block());
+    fn emit_bit_select(&mut self, dst: u8, mask: u8, a: u8, b: u8) {
+        let mask = self.use_var(mask);
+        let a = self.use_var(a);
+        let b = self.use_var(b);
 
+        // FIXME: should use the bitselect instruction but the x64 backend does not support it
+        let true_bits = self.builder.ins().band(a, mask);
+        let mask_not = self.builder.ins().bnot(mask);
+        let false_bits = self.builder.ins().band(b, mask_not);
+        let res = self.builder.ins().bor(true_bits, false_bits);
+
+        self.builder.def_var(Self::var(dst), res);
+    }
+
+    fn emit_bit_popcnt(&mut self, dst: u8, src: u8) {
+        let src = self.use_var(src);
+        let res = self.builder.ins().popcnt(src);
+        self.builder.def_var(Self::var(dst), res);
+    }
+
+    fn emit_bit_reverse(&mut self, dst: u8, src: u8) {
+        let src = self.use_var(src);
+        let res = self.builder.ins().bitrev(src);
+        self.builder.def_var(Self::var(dst), res);
+    }
+
+    fn emit_branch_cmp(&mut self, a: u8, b: u8, compare_kind: CompareKind, offset: u32) {
         let x = self.use_var(a);
         let y = self.use_var(b);
 
-        let cond = match params.compare_kind() {
+        let cond = match compare_kind {
             CompareKind::Eq => IntCC::Equal,
             CompareKind::Neq => IntCC::NotEqual,
             CompareKind::Gt => IntCC::SignedGreaterThan,
             CompareKind::Lt => IntCC::SignedLessThan,
         };
-        self.builder.ins().br_icmp(cond, x, y, jump_block, &[]);
-
-        self.builder.ins().jump(resume_block, &[]);
-        self.builder.seal_block(resume_block);
-        self.builder.switch_to_block(resume_block);
+        self.branch_ins(offset, |builder, jump_block| {
+            builder.ins().br_icmp(cond, x, y, jump_block, &[])
+        });
     }
 
-    fn emit_mem_load(&mut self, dst: u8, addr: usize) {
+    fn emit_branch_zero(&mut self, src: u8, offset: u32) {
+        let src = self.use_var(src);
+
+        self.branch_ins(offset, |builder, jump_block| {
+            builder.ins().brz(src, jump_block, &[])
+        });
+    }
+
+    fn emit_branch_non_zero(&mut self, src: u8, offset: u32) {
+        let src = self.use_var(src);
+
+        self.branch_ins(offset, |builder, jump_block| {
+            builder.ins().brnz(src, jump_block, &[])
+        });
+    }
+
+    fn emit_mem_load(&mut self, dst: u8, addr: u32) {
         let mem_start = self.builder.use_var(Variable::with_u32(VAR_MEM_START));
 
         let v = self.builder.ins().load(
             ir::types::I64,
             MemFlags::trusted(),
             mem_start,
-            i32::try_from(addr * 8).unwrap(),
+            addr.checked_mul(8).map(i32::try_from).unwrap().unwrap(),
         );
         self.builder.def_var(Self::var(dst), v);
     }
 
-    fn emit_mem_store(&mut self, addr: usize, src: u8) {
+    fn emit_mem_store(&mut self, addr: u32, src: u8) {
         let v = self.use_var(src);
 
         let mem_start = self.builder.use_var(Variable::with_u32(VAR_MEM_START));
@@ -349,7 +438,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             MemFlags::trusted(),
             v,
             mem_start,
-            i32::try_from(addr * 8).unwrap(),
+            addr.checked_mul(8).map(i32::try_from).unwrap().unwrap(),
         );
     }
 }
@@ -361,6 +450,24 @@ impl<'a> Emitter<'a> {
 
     fn var(v: u8) -> Variable {
         Variable::with_u32(v as u32)
+    }
+
+    fn branch_ins<F>(&mut self, offset: u32, instruction_func: F)
+    where
+        F: FnOnce(&mut FunctionBuilder, Block) -> ir::Inst,
+    {
+        let resume_block = self.builder.create_block();
+        let target_instruction = self.next_instruction - 1 + offset;
+        let jump_block = *self
+            .upcoming_blocks
+            .entry(target_instruction)
+            .or_insert_with(|| self.builder.create_block());
+
+        instruction_func(&mut self.builder, jump_block);
+
+        self.builder.ins().jump(resume_block, &[]);
+        self.builder.seal_block(resume_block);
+        self.builder.switch_to_block(resume_block);
     }
 }
 

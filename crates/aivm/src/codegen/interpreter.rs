@@ -105,11 +105,17 @@ impl Runner {
                     stack[usize::from(dst)].0 = ((a * b) >> 64) as i64;
                 }
                 IntNeg { dst, src } => stack[usize::from(dst)] = -stack[usize::from(src)],
-                IntAbs { dst, src } => stack[usize::from(dst)].0 = stack[usize::from(src)].0.wrapping_abs(),
+                IntAbs { dst, src } => {
+                    stack[usize::from(dst)].0 = stack[usize::from(src)].0.wrapping_abs()
+                }
                 IntInc { dst } => stack[usize::from(dst)] += Wrapping(1),
                 IntDec { dst } => stack[usize::from(dst)] -= Wrapping(1),
-                IntMin { dst, a, b } => stack[usize::from(dst)] = stack[usize::from(a)].min(stack[usize::from(b)]),
-                IntMax { dst, a, b } => stack[usize::from(dst)] = stack[usize::from(a)].min(stack[usize::from(b)]),
+                IntMin { dst, a, b } => {
+                    stack[usize::from(dst)] = stack[usize::from(a)].min(stack[usize::from(b)])
+                }
+                IntMax { dst, a, b } => {
+                    stack[usize::from(dst)] = stack[usize::from(a)].min(stack[usize::from(b)])
+                }
 
                 BitSwap { dst, src } => stack.swap(usize::from(dst), usize::from(src)),
                 BitOr { dst, a, b } => {
@@ -143,8 +149,12 @@ impl Runner {
 
                     stack[usize::from(dst)] = (a & mask) | (b & !mask);
                 }
-                BitPopcnt { dst, src } => stack[usize::from(dst)].0 = i64::from(stack[usize::from(src)].0.count_ones()),
-                BitReverse { dst, src } => stack[usize::from(dst)].0 = stack[usize::from(src)].0.reverse_bits(),
+                BitPopcnt { dst, src } => {
+                    stack[usize::from(dst)].0 = i64::from(stack[usize::from(src)].0.count_ones())
+                }
+                BitReverse { dst, src } => {
+                    stack[usize::from(dst)].0 = stack[usize::from(src)].0.reverse_bits()
+                }
 
                 BranchCmp {
                     a,
