@@ -101,7 +101,7 @@ impl codegen::private::CodeGeneratorImpl for Cranelift {
         }
     }
 
-    fn finish(&mut self, memory: Vec<i64>) -> Self::Runner {
+    fn finish(&mut self, memory_size: u32) -> Self::Runner {
         self.define_cur_function();
         self.module.finalize_definitions();
 
@@ -112,7 +112,7 @@ impl codegen::private::CodeGeneratorImpl for Cranelift {
         Runner {
             func_id: self.functions[0],
             module,
-            memory,
+            memory_size: memory_size.try_into().unwrap(),
         }
     }
 }
@@ -204,7 +204,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
         let func_ref = *self.func_refs.entry(idx).or_insert_with(|| {
             self.module.declare_func_in_func(
                 self.functions[usize::try_from(idx).unwrap()],
-                &mut self.builder.func,
+                self.builder.func,
             )
         });
 
@@ -476,23 +476,18 @@ impl<'a> Emitter<'a> {
 pub struct Runner {
     func_id: FuncId,
     module: JITModule,
-    memory: Vec<i64>,
+    memory_size: usize,
 }
 
 impl crate::Runner for Runner {
-    fn step(&mut self) {
+    fn step(&self, memory: &mut [i64]) {
+        // It would be unsound to call the compiled code with an invalid pointer.
+        assert!(memory.len() >= self.memory_size);
+
         let ptr = self.module.get_finalized_function(self.func_id);
         let main: fn(*mut i64) = unsafe { mem::transmute(ptr) };
 
-        main(self.memory.as_mut_ptr());
-    }
-
-    fn memory(&self) -> &[i64] {
-        &self.memory
-    }
-
-    fn memory_mut(&mut self) -> &mut [i64] {
-        &mut self.memory
+        main(memory.as_mut_ptr());
     }
 }
 

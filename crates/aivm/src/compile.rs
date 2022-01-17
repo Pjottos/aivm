@@ -34,16 +34,16 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
         }
     }
 
-    /// Compile the given code and use the given memory to create a runner.
-    pub fn compile(&mut self, code: &[u64], memory: Vec<i64>) -> impl Runner + 'static {
-        self.compile_with_frequencies::<DefaultFrequencies>(code, memory)
+    /// Compile the given code to a runner.
+    pub fn compile(&mut self, code: &[u64], memory_size: u32) -> impl Runner + 'static {
+        self.compile_with_frequencies::<DefaultFrequencies>(code, memory_size)
     }
 
     /// Like [compile](Self::compile), but using custom instruction frequencies.
     pub fn compile_with_frequencies<F: InstructionFrequencies>(
         &mut self,
         code: &[u64],
-        memory: Vec<i64>,
+        memory_size: u32,
     ) -> impl Runner + 'static {
         self.clear();
 
@@ -66,7 +66,6 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
         }
 
         let func_count = u32::try_from(self.funcs.len()).unwrap();
-        let memory_size = u32::try_from(memory.len()).unwrap();
 
         // Detect recursive function calls and prevent them from being emitted.
         // The call that would complete the cycle is blocked.
@@ -212,11 +211,19 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
                         emitter.emit_nop();
                     }
                 } else if cmp_freq(&mut kind, F::MEM_LOAD) {
-                    let addr = imm % memory_size;
-                    emitter.emit_mem_load(a, addr);
+                    if memory_size != 0 {
+                        let addr = imm % memory_size;
+                        emitter.emit_mem_load(a, addr);
+                    } else {
+                        emitter.emit_nop();
+                    }
                 } else if cmp_freq(&mut kind, F::MEM_STORE) {
-                    let addr = imm % memory_size;
-                    emitter.emit_mem_store(addr, a);
+                    if memory_size != 0 {
+                        let addr = imm % memory_size;
+                        emitter.emit_mem_store(addr, a);
+                    } else {
+                        emitter.emit_nop();
+                    }
                 } else {
                     panic!("instruction frequencies don't add up to 65536")
                 }
@@ -225,7 +232,7 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
             emitter.finalize();
         }
 
-        self.gen.finish(memory)
+        self.gen.finish(memory_size)
     }
 
     fn clear(&mut self) {

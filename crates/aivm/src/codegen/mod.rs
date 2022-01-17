@@ -27,7 +27,7 @@ pub(crate) mod private {
 
         fn begin(&mut self, function_count: NonZeroU32);
         fn begin_function(&mut self, idx: u32) -> Self::Emitter<'_>;
-        fn finish(&mut self, memory: Vec<i64>) -> Self::Runner;
+        fn finish(&mut self, memory_size: u32) -> Self::Runner;
     }
 
     pub trait Emitter {

@@ -29,10 +29,10 @@ impl codegen::private::CodeGeneratorImpl for Interpreter {
         }
     }
 
-    fn finish(&mut self, memory: Vec<i64>) -> Self::Runner {
+    fn finish(&mut self, _memory_size: u32) -> Self::Runner {
         let functions = self.functions.clone();
 
-        Runner { functions, memory }
+        Runner { functions }
     }
 }
 
@@ -51,38 +51,32 @@ impl Default for Interpreter {
 
 pub struct Runner {
     functions: Vec<Vec<Instruction>>,
-    memory: Vec<i64>,
 }
 
 impl crate::Runner for Runner {
-    fn step(&mut self) {
-        Self::call_function(&self.functions, &mut self.memory, 0);
-    }
-
-    fn memory(&self) -> &[i64] {
-        &self.memory
-    }
-
-    fn memory_mut(&mut self) -> &mut [i64] {
-        &mut self.memory
+    fn step(&self, memory: &mut [i64]) {
+        self.call_function(memory, 0);
     }
 }
 
 impl Runner {
-    fn call_function(functions: &[Vec<Instruction>], memory: &mut [i64], idx: u32) {
+    fn call_function(&self, memory: &mut [i64], idx: u32) {
         use Instruction::*;
 
         let mut stack = [Wrapping(0i64); 256];
         let mut skip_count = 0;
 
-        for instruction in functions[usize::try_from(idx).unwrap()].iter().copied() {
+        for instruction in self.functions[usize::try_from(idx).unwrap()]
+            .iter()
+            .copied()
+        {
             while skip_count > 0 {
                 skip_count -= 1;
                 continue;
             }
 
             match instruction {
-                Call { idx } => Self::call_function(functions, memory, idx),
+                Call { idx } => self.call_function(memory, idx),
                 Nop => (),
 
                 IntAdd { dst, a, b } => {
