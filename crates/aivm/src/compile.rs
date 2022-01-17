@@ -19,8 +19,7 @@ pub enum CompareKind {
 pub struct Compiler<G: CodeGenerator> {
     gen: G,
     funcs: Vec<Function>,
-    remaining_funcs: Vec<(u32, u32)>,
-    call_stack: Vec<u32>,
+    call_stack: Vec<(u32, u32)>,
     compile_funcs: HashSet<u32>,
 }
 
@@ -30,7 +29,6 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
         Self {
             gen,
             funcs: vec![],
-            remaining_funcs: vec![],
             call_stack: vec![],
             compile_funcs: HashSet::new(),
         }
@@ -62,14 +60,19 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
             self.funcs.last_mut().unwrap().instruction_count += 1;
         }
 
+        self.funcs.retain(|func| func.instruction_count > 0);
+        if self.funcs.is_empty() {
+            self.funcs.push(Function::new(0));
+        }
+
         let func_count = u32::try_from(self.funcs.len()).unwrap();
         let memory_size = u32::try_from(memory.len()).unwrap();
 
         // Detect recursive function calls and prevent them from being emitted.
         // The call that would complete the cycle is blocked.
-        self.remaining_funcs.push((0, 0));
+        self.call_stack.push((0, 0));
         'funcs: while let Some((f, offset, func)) = self
-            .remaining_funcs
+            .call_stack
             .pop()
             .map(|(f, offset)| (f, offset, &mut self.funcs[usize::try_from(f).unwrap()]))
         {
@@ -87,10 +90,9 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
                 if kind < F::CALL {
                     let idx = (instruction >> 32) as u32 % func_count;
 
-                    if idx != f && !self.call_stack.contains(&idx) {
-                        self.call_stack.push(f);
-                        self.remaining_funcs.push((f, i + 1));
-                        self.remaining_funcs.push((idx, 0));
+                    if idx != f && !self.call_stack.iter().copied().any(|(f, _)| f == idx) {
+                        self.call_stack.push((f, i + 1));
+                        self.call_stack.push((idx, 0));
 
                         continue 'funcs;
                     } else if !func.blocked_calls.contains(&idx) {
@@ -100,7 +102,6 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
             }
 
             self.compile_funcs.insert(f);
-            self.call_stack.pop();
         }
 
         self.gen.begin(NonZeroU32::new(func_count).unwrap());
@@ -229,7 +230,6 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
 
     fn clear(&mut self) {
         self.funcs.clear();
-        self.remaining_funcs.clear();
         self.call_stack.clear();
         self.compile_funcs.clear();
     }
