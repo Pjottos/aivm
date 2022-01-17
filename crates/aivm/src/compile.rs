@@ -45,6 +45,8 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
         code: &[u64],
         memory_size: u32,
     ) -> impl Runner + 'static {
+        const MAX_STACK_DEPTH: usize = 7;
+
         self.clear();
 
         // Count the amount of functions and how many instructions they contain.
@@ -89,7 +91,10 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
                 if kind < F::CALL {
                     let idx = (instruction >> 32) as u32 % func_count;
 
-                    if idx != f && !self.call_stack.iter().copied().any(|(f, _)| f == idx) {
+                    if idx != f
+                        && !self.call_stack.iter().copied().any(|(f, _)| f == idx)
+                        && self.call_stack.len() < MAX_STACK_DEPTH
+                    {
                         self.call_stack.push((f, i + 1));
                         self.call_stack.push((idx, 0));
 
