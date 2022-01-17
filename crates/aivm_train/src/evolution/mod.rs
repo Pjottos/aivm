@@ -1,35 +1,38 @@
 use rand::prelude::*;
-use rand_pcg::Pcg64;
-
-use std::slice;
+use rand_pcg::{Pcg32, Pcg64};
 
 mod mutate;
 
-pub use mutate::mutate_code;
+pub use mutate::fill_mutate_bits;
 
-pub fn build_code_from_seeds(seeds: &[u64], p_mutate: u16, code_buf: &mut [u64]) {
-    assert!(!seeds.is_empty());
+pub fn expand_code(root_seed: u64, mutation_seeds: &[u32], mutate_bits: &[u64], buf: &mut [u64]) {
+    assert!(mutate_bits.len() >= buf.len());
 
-    Pcg64::seed_from_u64(seeds[0]).fill(code_buf);
+    Pcg64::seed_from_u64(root_seed).fill(buf);
 
-    for seed in seeds[1..].iter().copied() {
-        mutate_code(code_buf, seed, p_mutate);
+    let max_offset = u32::try_from(mutate_bits.len() - buf.len()).unwrap_or(u32::MAX);
+    for seed in mutation_seeds.iter().copied() {
+        let start = usize::try_from(seed % max_offset).unwrap();
+        let end = start + buf.len();
+        for (chunk, mutation) in buf.iter_mut().zip(&mutate_bits[start..end]) {
+            *chunk ^= mutation;
+        }
     }
 }
 
-pub fn build_memory_from_seeds(seeds: &[u64], p_mutate: u16, memory: &mut [i64]) {
-    fn transform(seed: u64) -> u64 {
-        Pcg64::seed_from_u64(seed).next_u64()
-    }
+pub fn expand_memory(root_seed: u64, mutation_seeds: &[u32], mutate_bits: &[u64], buf: &mut [i64]) {
+    assert!(mutate_bits.len() >= buf.len());
 
-    assert!(!seeds.is_empty());
+    let mut rng = Pcg64::seed_from_u64(root_seed);
+    Pcg64::seed_from_u64(rng.gen()).fill(buf);
 
-    let memory =
-        unsafe { slice::from_raw_parts_mut(memory.as_mut_ptr() as *mut u64, memory.len()) };
-
-    Pcg64::seed_from_u64(transform(seeds[0])).fill(memory);
-
-    for seed in seeds[1..].iter().copied() {
-        mutate_code(memory, transform(seed), p_mutate);
+    let max_offset = u32::try_from(mutate_bits.len() - buf.len()).unwrap_or(u32::MAX);
+    for seed in mutation_seeds.iter().copied() {
+        let seed = Pcg32::seed_from_u64(u64::from(seed)).gen::<u32>();
+        let start = usize::try_from(seed % max_offset).unwrap();
+        let end = start + buf.len();
+        for (chunk, mutation) in buf.iter_mut().zip(mutate_bits[start..end].iter().copied()) {
+            *chunk ^= mutation as i64;
+        }
     }
 }

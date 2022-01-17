@@ -1,10 +1,10 @@
 use rand::prelude::*;
 use rand_pcg::Pcg64;
 
-pub fn mutate_code(code: &mut [u64], seed: u64, p_mutate: u16) {
+pub fn fill_mutate_bits(buf: &mut [u64], seed: u64, p_mutate: u16) {
     let mut rng = Pcg64::seed_from_u64(seed);
 
-    for instruction in code {
+    for chunk in buf {
         let mut mutations = 0;
 
         for _ in 0..16 {
@@ -19,7 +19,7 @@ pub fn mutate_code(code: &mut [u64], seed: u64, p_mutate: u16) {
             }
         }
 
-        *instruction ^= mutations;
+        *chunk = mutations;
     }
 }
 
@@ -33,7 +33,7 @@ mod tests {
         let seed = 33;
         let p_mutate = 1024;
 
-        mutate_code(&mut code, seed, p_mutate);
+        fill_mutate_bits(&mut code, seed, p_mutate);
 
         assert_eq!(
             code,
