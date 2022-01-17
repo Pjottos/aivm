@@ -111,7 +111,7 @@ impl codegen::private::CodeGeneratorImpl for Cranelift {
 
         Runner {
             func_id: self.functions[0],
-            module,
+            module: Some(module),
             memory_size: memory_size.try_into().unwrap(),
         }
     }
@@ -475,7 +475,7 @@ impl<'a> Emitter<'a> {
 
 pub struct Runner {
     func_id: FuncId,
-    module: JITModule,
+    module: Option<JITModule>,
     memory_size: usize,
 }
 
@@ -484,10 +484,26 @@ impl crate::Runner for Runner {
         // It would be unsound to call the compiled code with an invalid pointer.
         assert!(memory.len() >= self.memory_size);
 
-        let ptr = self.module.get_finalized_function(self.func_id);
+        let ptr = self
+            .module
+            .as_ref()
+            .unwrap()
+            .get_finalized_function(self.func_id);
         let main: fn(*mut i64) = unsafe { mem::transmute(ptr) };
 
         main(memory.as_mut_ptr());
+    }
+}
+
+impl Drop for Runner {
+    fn drop(&mut self) {
+        if let Some(module) = self.module.take() {
+            // We can do this because the pointers given out by the module
+            // are never exposed.
+            unsafe {
+                module.free_memory();
+            }
+        }
     }
 }
 
