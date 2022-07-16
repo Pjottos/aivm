@@ -5,9 +5,9 @@
 /// instructions with a frequency of 0 will never appear in the VM code.
 pub trait InstructionFrequencies {
     /// The frequency of the `end_func` instruction.
-    const END_FUNC: u16 = 255; // 0.004
+    const END_FUNC: u16 = 55; // 0.0008
     /// The frequency of the `call` instruction.
-    const CALL: u16 = 3932; // 0.06
+    const CALL: u16 = 1510; // 0.02
 
     /// The frequency of the `add` instruction.
     const INT_ADD: u16 = 1510; // 0.02
@@ -65,7 +65,7 @@ pub trait InstructionFrequencies {
     const BRANCH_NON_ZERO: u16 = 655; // 0.01
 
     /// The frequency of the `load` instruction.
-    const MEM_LOAD: u16 = 13847; // 0.21
+    const MEM_LOAD: u16 = 16469; // 0.25
     /// The frequency of the `store` instruction.
     const MEM_STORE: u16 = 9496; // 0.14
 

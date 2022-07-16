@@ -123,19 +123,14 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
                         // Can never call the entry point
                         emitter.emit_nop();
                     } else {
-                        let idx = imm % func_count;
-                        if idx == 0 {
-                            // Can never call the entry point
+                        let min_idx = 1 + cur_level * level_size;
+                        // Saturating sub to handle the last, potentially partially filled, level
+                        let callable_count = func_count.saturating_sub(min_idx);
+                        if callable_count == 0 {
                             emitter.emit_nop();
                         } else {
-                            let level = 1 + (idx - 1) / level_size;
-                            if level > cur_level {
-                                emitter.emit_call(idx);
-                            } else {
-                                // Target function is in same or higher level, calling it might
-                                // cause recursion.
-                                emitter.emit_nop();
-                            }
+                            let offset = imm % callable_count;
+                            emitter.emit_call(min_idx + offset);
                         }
                     }
                 } else if cmp_freq(&mut kind, F::INT_ADD) {

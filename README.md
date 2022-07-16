@@ -29,6 +29,6 @@ Each program has the following parameters:
 
 A mix of integer, bitwise, call, load/store and conditional branch instructions is used.
 Infinite loops are prevented by only allowing a branch to jump to a later part in the same
-function, and by turning recursive function calls into a no-op.
+function, and by making recursive function calls impossible.
 
 For details of instruction encoding, check `compile.rs`.
