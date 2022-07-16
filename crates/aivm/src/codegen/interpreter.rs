@@ -70,7 +70,7 @@ impl Runner {
             .iter()
             .copied()
         {
-            while skip_count > 0 {
+            if skip_count > 0 {
                 skip_count -= 1;
                 continue;
             }
