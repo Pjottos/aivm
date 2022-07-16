@@ -63,7 +63,7 @@ impl Runner {
     fn call_function(&self, memory: &mut [i64], idx: u32) {
         use Instruction::*;
 
-        let mut stack = [Wrapping(0i64); 256];
+        let mut stack = [Wrapping(0i64); 64];
         let mut skip_count = 0;
 
         for instruction in self.functions[usize::try_from(idx).unwrap()]

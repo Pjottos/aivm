@@ -20,9 +20,9 @@ use std::{
     num::NonZeroU32,
 };
 
-const VAR_MEM_START: u32 = 256;
+const VAR_MEM_START: u32 = 64;
 /// Temporary, for use in the swap instruction.
-const VAR_TMP: u32 = 257;
+const VAR_TMP: u32 = 65;
 
 /// A code generator that uses cranelift to JIT compile AIVM code into native machine code.
 pub struct Cranelift {
@@ -76,7 +76,7 @@ impl codegen::private::CodeGeneratorImpl for Cranelift {
 
         let mut builder = FunctionBuilder::new(&mut self.ctx.func, &mut self.func_ctx);
 
-        for i in 0..256 {
+        for i in 0..VAR_MEM_START {
             builder.declare_var(Variable::with_u32(i), ir::types::I64);
         }
         builder.declare_var(Variable::with_u32(VAR_MEM_START), ir::types::R64);

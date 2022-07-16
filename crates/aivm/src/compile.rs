@@ -105,12 +105,13 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
             for (i, instruction) in code[start..end].iter().copied().enumerate() {
                 let mut kind = instruction as u16;
 
-                let a = (instruction >> 16) as u8;
-                let b = (instruction >> 24) as u8;
+                let a = (instruction >> 16) as u8 & 0x3f;
+                let b = (instruction >> 22) as u8 & 0x3f;
+                // 4 bits unused
                 let imm = (instruction >> 32) as u32;
 
-                let c = (instruction >> 32) as u8;
-                let d = (instruction >> 48) as u8;
+                let c = (instruction >> 32) as u8 & 0x3f;
+                let d = (instruction >> 46) as u8 & 0x3f;
 
                 emitter.prepare_emit();
 

@@ -14,7 +14,7 @@ An agent has the following components:
    The short and long term memory of the agent. Also used to pass sensory input and read
    output.
 - __Stack__
-   A space for local variables in functions (see below). It consists of 256 8 byte values.
+   A space for local variables in functions (see below). It consists of 64 8 byte values.
 - __Code__
    A collection of *functions* with one entry point. Functions have no arguments and do not
    return values, it is expected that information is shared through the memory. The entry
