@@ -13,6 +13,7 @@
 //! ```
 //! use aivm::{codegen, Compiler, Runner};
 //!
+//! const LOWEST_FUNCTION_LEVEL: u32 = 1;
 //! const MEMORY_SIZE: u32 = 4;
 //!
 //! let gen = codegen::Interpreter::new();
@@ -20,8 +21,8 @@
 //!
 //! // TODO: train code and memory to make it do something useful.
 //! let code = [0; 16];
-//! let mut runner = compiler.compile(&code, MEMORY_SIZE);
-//! let mut memory = vec![0; MEMORY_SIZE as usize];
+//! let mut runner = compiler.compile(&code, LOWEST_FUNCTION_LEVEL, MEMORY_SIZE);
+//! let mut memory = [0; MEMORY_SIZE as usize];
 //!
 //! runner.step(&mut memory);
 //! ```

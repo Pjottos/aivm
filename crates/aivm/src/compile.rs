@@ -131,7 +131,7 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
                             if level > cur_level {
                                 emitter.emit_call(idx);
                             } else {
-                                // Target function is in same or higher level, calling might
+                                // Target function is in same or higher level, calling it might
                                 // cause recursion.
                                 emitter.emit_nop();
                             }
@@ -294,17 +294,18 @@ mod tests {
     fn sample() {
         let mut code = [0; 256];
         thread_rng().fill(&mut code);
+        let mut mem = [0; 256];
 
         let gen = crate::codegen::Cranelift::new();
         let mut compiler = Compiler::new(gen);
-        let mut runner = compiler.compile(&code, vec![0; 128]);
+        let mut runner = compiler.compile(&code, 4, 256);
 
         thread_rng().fill(&mut code);
-        let mut runner2 = compiler.compile(&code, vec![0; 128]);
+        let mut runner2 = compiler.compile(&code, 4, 256);
 
         drop(compiler);
 
-        runner2.step();
-        runner.step();
+        runner2.step(&mut mem);
+        runner.step(&mut mem);
     }
 }

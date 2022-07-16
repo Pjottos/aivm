@@ -23,4 +23,4 @@ cranelift-native = { version = "0.80", optional = true }
 rand = "0.8"
 
 [features]
-jit-cranelift = ["cranelift", "cranelift-jit", "cranelift-module", "cranelift-native"]
+cranelift = ["dep:cranelift", "cranelift-jit", "cranelift-module", "cranelift-native"]
