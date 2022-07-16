@@ -128,7 +128,8 @@ impl Runner {
                     stack[usize::from(dst)].0 = stack[usize::from(src)].0 << amount
                 }
                 BitShiftRight { dst, src, amount } => {
-                    stack[usize::from(dst)].0 = stack[usize::from(src)].0 >> amount
+                    stack[usize::from(dst)].0 =
+                        ((stack[usize::from(src)].0 as u64) >> amount) as i64
                 }
                 BitRotateLeft { dst, src, amount } => {
                     stack[usize::from(dst)].0 =
