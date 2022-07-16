@@ -5,69 +5,69 @@
 /// instructions with a frequency of 0 will never appear in the VM code.
 pub trait InstructionFrequencies {
     /// The frequency of the `end_func` instruction.
-    const END_FUNC: u16 = 437; // 0.2
+    const END_FUNC: u16 = 255; // 0.004
     /// The frequency of the `call` instruction.
-    const CALL: u16 = 655; // 0.3
+    const CALL: u16 = 3932; // 0.06
 
     /// The frequency of the `add` instruction.
-    const INT_ADD: u16 = 3277; // 1.5
+    const INT_ADD: u16 = 1510; // 0.02
     /// The frequency of the `sub` instruction.
-    const INT_SUB: u16 = 1966; // 0.9
+    const INT_SUB: u16 = 1510; // 0.02
     /// The frequency of the `mul` instruction.
-    const INT_MUL: u16 = 2840; // 1.3
+    const INT_MUL: u16 = 1510; // 0.02
     /// The frequency of the `mul_high` instruction.
-    const INT_MUL_HIGH: u16 = 2185; // 1.0
+    const INT_MUL_HIGH: u16 = 1510; // 0.02
     /// The frequency of the `mul_high_unsigned` instruction.
-    const INT_MUL_HIGH_UNSIGNED: u16 = 2185; // 1.0
+    const INT_MUL_HIGH_UNSIGNED: u16 = 1510; // 0.02
     /// The frequency of the `neg` instruction.
-    const INT_NEG: u16 = 2185; // 1.0
+    const INT_NEG: u16 = 1510; // 0.02
     /// The frequency of the `abs` instruction.
-    const INT_ABS: u16 = 2185; // 1.0
+    const INT_ABS: u16 = 1510; // 0.02
     /// The frequency of the `inc` instruction.
-    const INT_INC: u16 = 2185; // 1.0
+    const INT_INC: u16 = 1510; // 0.02
     /// The frequency of the `dec` instruction.
-    const INT_DEC: u16 = 2185; // 1.0
+    const INT_DEC: u16 = 1510; // 0.02
     /// The frequency of the `int_min` instruction.
-    const INT_MIN: u16 = 2840; // 1.3
+    const INT_MIN: u16 = 1510; // 0.02
     /// The frequency of the `int_max` instruction.
-    const INT_MAX: u16 = 2840; // 1.3
+    const INT_MAX: u16 = 1510; // 0.02
 
     /// The frequency of the `swap` instruction.
-    const BIT_SWAP: u16 = 1092; // 0.5
+    const BIT_SWAP: u16 = 1510; // 0.02
     /// The frequency of the `or` instruction.
-    const BIT_OR: u16 = 2621; // 1.2
+    const BIT_OR: u16 = 1510; // 0.02
     /// The frequency of the `and` instruction.
-    const BIT_AND: u16 = 2621; // 1.2
+    const BIT_AND: u16 = 1510; // 0.02
     /// The frequency of the `xor` instruction.
-    const BIT_XOR: u16 = 3497; // 1.6
+    const BIT_XOR: u16 = 1510; // 0.02
     /// The frequency of the `not` instruction.
-    const BIT_NOT: u16 = 2621; // 1.2
+    const BIT_NOT: u16 = 1510; // 0.02
     /// The frequency of the `shift_left` instruction.
-    const BIT_SHIFT_L: u16 = 2621; // 1.2
+    const BIT_SHIFT_L: u16 = 1510; // 0.02
     /// The frequency of the `shift_right` instruction.
-    const BIT_SHIFT_R: u16 = 2621; // 1.2
+    const BIT_SHIFT_R: u16 = 1510; // 0.02
     /// The frequency of the `rotate_left` instruction.
-    const BIT_ROT_L: u16 = 2621; // 1.2
+    const BIT_ROT_L: u16 = 1510; // 0.02
     /// The frequency of the `rotate_right` instruction.
-    const BIT_ROT_R: u16 = 2621; // 1.2
+    const BIT_ROT_R: u16 = 1510; // 0.02
     /// The frequency of the `bit_select` instruction.
-    const BIT_SELECT: u16 = 2840; // 1.3
+    const BIT_SELECT: u16 = 1510; // 0.02
     /// The frequency of the `popcnt` instruction.
-    const BIT_POPCNT: u16 = 1966; // 0.9
+    const BIT_POPCNT: u16 = 1510; // 0.02
     /// The frequency of the `bit_reverse` instruction.
-    const BIT_REVERSE: u16 = 2403; // 1.1
+    const BIT_REVERSE: u16 = 1510; // 0.02
 
     /// The frequency of the `branch_cmp` instruction.
-    const BRANCH_CMP: u16 = 1092; // 0.5
+    const BRANCH_CMP: u16 = 1966; // 0.03
     /// The frequency of the `branch_zero` instruction.
-    const BRANCH_ZERO: u16 = 655; // 0.3
+    const BRANCH_ZERO: u16 = 655; // 0.01
     /// The frequency of the `branch_non_zero` instruction.
-    const BRANCH_NON_ZERO: u16 = 655; // 0.3
+    const BRANCH_NON_ZERO: u16 = 655; // 0.01
 
     /// The frequency of the `load` instruction.
-    const MEM_LOAD: u16 = 3276; // 1.5
+    const MEM_LOAD: u16 = 13847; // 0.21
     /// The frequency of the `store` instruction.
-    const MEM_STORE: u16 = 1748; // 0.8
+    const MEM_STORE: u16 = 9496; // 0.14
 
     /// Takes the sum of all frequencies, and subtracts it from 2^16. The result must be 0
     /// or the VM compiler will panic on certain input values.
