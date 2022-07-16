@@ -79,7 +79,7 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
         }
 
         let func_count = u32::try_from(self.funcs.len()).unwrap();
-        let (level_size, last_level_size) = if lowest_function_level == 0 {
+        let (level_size, _last_level_size) = if lowest_function_level == 0 {
             (0, 0)
         } else {
             ceil_div_rem(func_count - 1, lowest_function_level)
