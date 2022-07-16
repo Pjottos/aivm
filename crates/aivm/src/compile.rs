@@ -3,7 +3,7 @@ use crate::{
     DefaultFrequencies, InstructionFrequencies, Runner,
 };
 
-use std::{collections::HashSet, num::NonZeroU32};
+use std::num::NonZeroU32;
 
 #[derive(Debug, Clone, Copy)]
 pub enum CompareKind {
@@ -19,33 +19,44 @@ pub enum CompareKind {
 pub struct Compiler<G: CodeGenerator> {
     gen: G,
     funcs: Vec<Function>,
-    call_stack: Vec<(u32, u32)>,
-    compile_funcs: HashSet<u32>,
 }
 
 impl<G: CodeGenerator + 'static> Compiler<G> {
     /// Create a [Compiler] that will use the given code generator.
     pub fn new(gen: G) -> Self {
-        Self {
-            gen,
-            funcs: vec![],
-            call_stack: vec![],
-            compile_funcs: HashSet::new(),
-        }
+        Self { gen, funcs: vec![] }
     }
 
     /// Compile the given code to a runner.
-    pub fn compile(&mut self, code: &[u64], memory_size: u32) -> impl Runner + 'static {
-        self.compile_with_frequencies::<DefaultFrequencies>(code, memory_size)
+    ///
+    /// The parameter `lowest_function_level` controls the lowest (highest value) function
+    /// "level" where functions in level `n` can only call functions in levels
+    /// `(n, lowest_function_level)`. The entry point is always the only function in level 0, and
+    /// other levels .
+    ///
+    /// # Panics
+    /// If `function_levels == u32::MAX`.
+    pub fn compile(
+        &mut self,
+        code: &[u64],
+        lowest_function_level: u32,
+        memory_size: u32,
+    ) -> impl Runner + 'static {
+        self.compile_with_frequencies::<DefaultFrequencies>(
+            code,
+            lowest_function_level,
+            memory_size,
+        )
     }
 
     /// Like [compile](Self::compile), but using custom instruction frequencies.
     pub fn compile_with_frequencies<F: InstructionFrequencies>(
         &mut self,
         code: &[u64],
+        lowest_function_level: u32,
         memory_size: u32,
     ) -> impl Runner + 'static {
-        const MAX_STACK_DEPTH: usize = 7;
+        assert_ne!(lowest_function_level, u32::MAX);
 
         self.clear();
 
@@ -68,54 +79,25 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
         }
 
         let func_count = u32::try_from(self.funcs.len()).unwrap();
-
-        // Detect recursive function calls and prevent them from being emitted.
-        // The call that would complete the cycle is blocked.
-        self.call_stack.push((0, 0));
-        'funcs: while let Some((f, offset, func)) = self
-            .call_stack
-            .pop()
-            .map(|(f, offset)| (f, offset, &mut self.funcs[usize::try_from(f).unwrap()]))
-        {
-            let start = func.first_instruction + usize::try_from(offset).unwrap();
-            let end = func.first_instruction + usize::try_from(func.instruction_count).unwrap();
-            for (i, instruction) in code[start..end]
-                .iter()
-                .copied()
-                .enumerate()
-                .map(|(i, ins)| (u32::try_from(i).unwrap() + offset, ins))
-            {
-                let mut kind = instruction as u16;
-
-                kind -= F::END_FUNC;
-                if kind < F::CALL {
-                    let idx = (instruction >> 32) as u32 % func_count;
-
-                    if idx != f
-                        && !self.call_stack.iter().copied().any(|(f, _)| f == idx)
-                        && self.call_stack.len() < MAX_STACK_DEPTH
-                    {
-                        self.call_stack.push((f, i + 1));
-                        self.call_stack.push((idx, 0));
-
-                        continue 'funcs;
-                    } else if !func.blocked_calls.contains(&idx) {
-                        func.blocked_calls.push(idx);
-                    }
-                }
-            }
-
-            self.compile_funcs.insert(f);
-        }
+        let (level_size, last_level_size) = if lowest_function_level == 0 {
+            (0, 0)
+        } else {
+            ceil_div_rem(func_count - 1, lowest_function_level)
+        };
 
         self.gen.begin(NonZeroU32::new(func_count).unwrap());
 
         for (f, func) in self
-            .compile_funcs
+            .funcs
             .iter()
-            .copied()
-            .map(|f| (f, &self.funcs[usize::try_from(f).unwrap()]))
+            .enumerate()
+            .map(|(f, func)| (f as u32, func))
         {
+            let cur_level = if f == 0 || level_size == 0 {
+                0
+            } else {
+                1 + (f - 1) / level_size
+            };
             let mut emitter = self.gen.begin_function(f);
 
             let start = func.first_instruction;
@@ -136,13 +118,24 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
                 kind -= F::END_FUNC;
 
                 if cmp_freq(&mut kind, F::CALL) {
-                    let idx = imm % func_count;
-
-                    if !func.blocked_calls.contains(&idx) {
-                        emitter.emit_call(idx);
-                    } else {
-                        // Ensure instruction count remains the same, for branches.
+                    if level_size == 0 {
+                        // Can never call the entry point
                         emitter.emit_nop();
+                    } else {
+                        let idx = imm % func_count;
+                        if idx == 0 {
+                            // Can never call the entry point
+                            emitter.emit_nop();
+                        } else {
+                            let level = 1 + (idx - 1) / level_size;
+                            if level > cur_level {
+                                emitter.emit_call(idx);
+                            } else {
+                                // Target function is in same or higher level, calling might
+                                // cause recursion.
+                                emitter.emit_nop();
+                            }
+                        }
                     }
                 } else if cmp_freq(&mut kind, F::INT_ADD) {
                     emitter.emit_int_add(a, b, c);
@@ -242,9 +235,15 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
 
     fn clear(&mut self) {
         self.funcs.clear();
-        self.call_stack.clear();
-        self.compile_funcs.clear();
     }
+}
+
+#[inline]
+fn ceil_div_rem(x: u32, y: u32) -> (u32, u32) {
+    let div = x / y;
+    let rem = x % y;
+
+    (div + (rem != 0) as u32, rem)
 }
 
 #[inline]
@@ -274,7 +273,6 @@ fn branch_offset(imm: u32, func: &Function, cur_offset: u32) -> Option<u32> {
 struct Function {
     first_instruction: usize,
     instruction_count: u32,
-    blocked_calls: Vec<u32>,
 }
 
 impl Function {
@@ -282,7 +280,6 @@ impl Function {
         Self {
             first_instruction,
             instruction_count: 0,
-            blocked_calls: vec![],
         }
     }
 }
