@@ -1,5 +1,8 @@
 use crate::{
-    codegen::{private::Emitter, CodeGenerator},
+    codegen::{
+        private::{Emitter, MemoryBank},
+        CodeGenerator,
+    },
     DefaultFrequencies, InstructionFrequencies, Runner,
 };
 
@@ -40,11 +43,15 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
         &mut self,
         code: &[u64],
         lowest_function_level: u32,
+        input_size: u32,
+        output_size: u32,
         memory_size: u32,
     ) -> impl Runner + 'static {
         self.compile_with_frequencies::<DefaultFrequencies>(
             code,
             lowest_function_level,
+            input_size,
+            output_size,
             memory_size,
         )
     }
@@ -54,6 +61,8 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
         &mut self,
         code: &[u64],
         lowest_function_level: u32,
+        input_size: u32,
+        output_size: u32,
         memory_size: u32,
     ) -> impl Runner + 'static {
         assert_ne!(lowest_function_level, u32::MAX);
@@ -207,14 +216,28 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
                 } else if cmp_freq(&mut kind, F::MEM_LOAD) {
                     if memory_size != 0 {
                         let addr = imm % memory_size;
-                        emitter.emit_mem_load(a, addr);
+                        emitter.emit_mem_load(MemoryBank::Memory, a, addr);
+                    } else {
+                        emitter.emit_nop();
+                    }
+                } else if cmp_freq(&mut kind, F::INPUT_LOAD) {
+                    if input_size != 0 {
+                        let addr = imm % input_size;
+                        emitter.emit_mem_load(MemoryBank::Input, a, addr);
                     } else {
                         emitter.emit_nop();
                     }
                 } else if cmp_freq(&mut kind, F::MEM_STORE) {
                     if memory_size != 0 {
                         let addr = imm % memory_size;
-                        emitter.emit_mem_store(addr, a);
+                        emitter.emit_mem_store(MemoryBank::Memory, addr, a);
+                    } else {
+                        emitter.emit_nop();
+                    }
+                } else if cmp_freq(&mut kind, F::OUTPUT_STORE) {
+                    if output_size != 0 {
+                        let addr = imm % output_size;
+                        emitter.emit_mem_store(MemoryBank::Output, addr, a);
                     } else {
                         emitter.emit_nop();
                     }
@@ -226,7 +249,7 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
             emitter.finalize();
         }
 
-        self.gen.finish(memory_size)
+        self.gen.finish(input_size, output_size, memory_size)
     }
 
     fn clear(&mut self) {
@@ -290,18 +313,20 @@ mod tests {
     fn sample() {
         let mut code = [0; 256];
         thread_rng().fill(&mut code);
-        let mut mem = [0; 256];
+        let input = [0; 256];
+        let mut output = [0; 128];
+        let mut mem = [0; 64];
 
         let gen = crate::codegen::Cranelift::new();
         let mut compiler = Compiler::new(gen);
-        let mut runner = compiler.compile(&code, 4, 256);
+        let mut runner = compiler.compile(&code, 4, 256, 128, 64);
 
         thread_rng().fill(&mut code);
-        let mut runner2 = compiler.compile(&code, 4, 256);
+        let mut runner2 = compiler.compile(&code, 4, 256, 128, 64);
 
         drop(compiler);
 
-        runner2.step(&mut mem);
-        runner.step(&mut mem);
+        runner2.step(&input, &mut output, &mut mem);
+        runner.step(&input, &mut output, &mut mem);
     }
 }

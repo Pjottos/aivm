@@ -14,6 +14,8 @@
 //! use aivm::{codegen, Compiler, Runner};
 //!
 //! const LOWEST_FUNCTION_LEVEL: u32 = 1;
+//! const INPUT_SIZE: u32 = 4;
+//! const OUTPUT_SIZE: u32 = 4;
 //! const MEMORY_SIZE: u32 = 4;
 //!
 //! let gen = codegen::Interpreter::new();
@@ -21,10 +23,18 @@
 //!
 //! // TODO: train code and memory to make it do something useful.
 //! let code = [0; 16];
-//! let mut runner = compiler.compile(&code, LOWEST_FUNCTION_LEVEL, MEMORY_SIZE);
+//! let mut runner = compiler.compile(
+//!     &code,
+//!     LOWEST_FUNCTION_LEVEL,
+//!     INPUT_SIZE,
+//!     OUTPUT_SIZE,
+//!     MEMORY_SIZE,
+//! );
+//! let input = [0; INPUT_SIZE as usize];
+//! let mut output = [0; OUTPUT_SIZE as usize];
 //! let mut memory = [0; MEMORY_SIZE as usize];
 //!
-//! runner.step(&mut memory);
+//! runner.step(&input, &mut output, &mut memory);
 //! ```
 
 /// The different code generators available.
@@ -39,7 +49,7 @@ pub use frequency::{DefaultFrequencies, InstructionFrequencies};
 pub trait Runner {
     /// Run the VM code, calling into the main function once.
     ///
-    /// The provided memory must be at least as big as the memory size that was used while
-    /// compiling the code.
-    fn step(&self, memory: &mut [i64]);
+    /// The provided input, output and memory slices must be at least as big as the sizes that were
+    /// used while compiling the code.
+    fn step(&self, input: &[i64], output: &mut [i64], memory: &mut [i64]);
 }
