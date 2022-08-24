@@ -524,6 +524,8 @@ impl crate::Runner for Runner {
             .get_finalized_function(self.func_id);
         let main: fn(*const i64, *mut i64, *mut i64) = unsafe { mem::transmute(ptr) };
 
+        output.fill(0);
+
         main(input.as_ptr(), output.as_mut_ptr(), memory.as_mut_ptr());
     }
 }

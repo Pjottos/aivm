@@ -69,6 +69,9 @@ impl crate::Runner for Runner {
         assert!(self.input_size as usize <= input.len());
         assert!(self.output_size as usize <= output.len());
         assert!(self.memory_size as usize <= memory.len());
+
+        output.fill(0);
+
         self.call_function(input, output, memory, 0);
     }
 }
