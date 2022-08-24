@@ -64,10 +64,14 @@ pub trait InstructionFrequencies {
     /// The frequency of the `branch_non_zero` instruction.
     const BRANCH_NON_ZERO: u16 = 655; // 0.01
 
-    /// The frequency of the `load` instruction.
-    const MEM_LOAD: u16 = 16469; // 0.25
-    /// The frequency of the `store` instruction.
-    const MEM_STORE: u16 = 9496; // 0.14
+    /// The frequency of the `mem_load` instruction.
+    const MEM_LOAD: u16 = 8234; // 0.125
+    /// The frequency of the `input_load` instruction.
+    const INPUT_LOAD: u16 = 8235; // 0.125
+    /// The frequency of the `mem_store` instruction.
+    const MEM_STORE: u16 = 4748; // 0.7
+    /// The frequency of the `output_store` instruction.
+    const OUTPUT_STORE: u16 = 4748; // 0.7
 
     /// Takes the sum of all frequencies, and subtracts it from 2^16. The result must be 0
     /// or the VM compiler will panic on certain input values.
@@ -104,7 +108,9 @@ pub trait InstructionFrequencies {
                 + i32::from(Self::BRANCH_ZERO)
                 + i32::from(Self::BRANCH_NON_ZERO)
                 + i32::from(Self::MEM_LOAD)
-                + i32::from(Self::MEM_STORE))
+                + i32::from(Self::INPUT_LOAD)
+                + i32::from(Self::MEM_STORE)
+                + i32::from(Self::OUTPUT_STORE))
     }
 }
 

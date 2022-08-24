@@ -1,4 +1,7 @@
-use crate::{codegen, compile::CompareKind};
+use crate::{
+    codegen::{self, private::MemoryBank},
+    compile::CompareKind,
+};
 
 use std::{
     convert::TryFrom,
@@ -29,10 +32,15 @@ impl codegen::private::CodeGeneratorImpl for Interpreter {
         }
     }
 
-    fn finish(&mut self, _memory_size: u32) -> Self::Runner {
+    fn finish(&mut self, input_size: u32, output_size: u32, memory_size: u32) -> Self::Runner {
         let functions = self.functions.clone();
 
-        Runner { functions }
+        Runner {
+            functions,
+            input_size,
+            output_size,
+            memory_size,
+        }
     }
 }
 
@@ -51,16 +59,22 @@ impl Default for Interpreter {
 
 pub struct Runner {
     functions: Vec<Vec<Instruction>>,
+    input_size: u32,
+    output_size: u32,
+    memory_size: u32,
 }
 
 impl crate::Runner for Runner {
-    fn step(&self, memory: &mut [i64]) {
-        self.call_function(memory, 0);
+    fn step(&self, input: &[i64], output: &mut [i64], memory: &mut [i64]) {
+        assert!(self.input_size as usize <= input.len());
+        assert!(self.output_size as usize <= output.len());
+        assert!(self.memory_size as usize <= memory.len());
+        self.call_function(input, output, memory, 0);
     }
 }
 
 impl Runner {
-    fn call_function(&self, memory: &mut [i64], idx: u32) {
+    fn call_function(&self, input: &[i64], output: &mut [i64], memory: &mut [i64], idx: u32) {
         use Instruction::*;
 
         let mut stack = [Wrapping(0i64); 64];
@@ -76,7 +90,7 @@ impl Runner {
             }
 
             match instruction {
-                Call { idx } => self.call_function(memory, idx),
+                Call { idx } => self.call_function(input, output, memory, idx),
                 Nop => (),
 
                 IntAdd { dst, a, b } => {
@@ -184,11 +198,23 @@ impl Runner {
                     }
                 }
 
-                MemLoad { dst, addr } => {
-                    stack[usize::from(dst)].0 = memory[usize::try_from(addr).unwrap()]
+                MemLoad { bank, dst, addr } => {
+                    let idx = usize::try_from(addr).unwrap();
+                    let target = &mut stack[usize::from(dst)].0;
+                    match bank {
+                        MemoryBank::Input => *target = input[idx],
+                        MemoryBank::Memory => *target = memory[idx],
+                        MemoryBank::Output => panic!("tried to load from output"),
+                    }
                 }
-                MemStore { addr, src } => {
-                    memory[usize::try_from(addr).unwrap()] = stack[usize::from(src)].0
+                MemStore { bank, addr, src } => {
+                    let idx = usize::try_from(addr).unwrap();
+                    let val = stack[usize::from(src)].0;
+                    match bank {
+                        MemoryBank::Output => output[idx] = val,
+                        MemoryBank::Memory => memory[idx] = val,
+                        MemoryBank::Input => panic!("tried to store to input"),
+                    }
                 }
             }
         }
@@ -326,10 +352,12 @@ enum Instruction {
     },
 
     MemLoad {
+        bank: MemoryBank,
         dst: u8,
         addr: u32,
     },
     MemStore {
+        bank: MemoryBank,
         addr: u32,
         src: u8,
     },
@@ -438,10 +466,10 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
         self.func.push(Instruction::BranchNonZero { src, offset });
     }
 
-    fn emit_mem_load(&mut self, dst: u8, addr: u32) {
-        self.func.push(Instruction::MemLoad { dst, addr });
+    fn emit_mem_load(&mut self, bank: MemoryBank, dst: u8, addr: u32) {
+        self.func.push(Instruction::MemLoad { bank, dst, addr });
     }
-    fn emit_mem_store(&mut self, addr: u32, src: u8) {
-        self.func.push(Instruction::MemStore { addr, src });
+    fn emit_mem_store(&mut self, bank: MemoryBank, addr: u32, src: u8) {
+        self.func.push(Instruction::MemStore { bank, addr, src });
     }
 }

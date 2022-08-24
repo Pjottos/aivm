@@ -27,7 +27,14 @@ pub(crate) mod private {
 
         fn begin(&mut self, function_count: NonZeroU32);
         fn begin_function(&mut self, idx: u32) -> Self::Emitter<'_>;
-        fn finish(&mut self, memory_size: u32) -> Self::Runner;
+        fn finish(&mut self, input_size: u32, output_size: u32, memory_size: u32) -> Self::Runner;
+    }
+
+    #[derive(Debug, Clone, Copy)]
+    pub enum MemoryBank {
+        Input,
+        Output,
+        Memory,
     }
 
     pub trait Emitter {
@@ -66,7 +73,7 @@ pub(crate) mod private {
         fn emit_branch_zero(&mut self, src: u8, offset: u32);
         fn emit_branch_non_zero(&mut self, src: u8, offset: u32);
 
-        fn emit_mem_load(&mut self, dst: u8, addr: u32);
-        fn emit_mem_store(&mut self, addr: u32, src: u8);
+        fn emit_mem_load(&mut self, bank: MemoryBank, dst: u8, addr: u32);
+        fn emit_mem_store(&mut self, bank: MemoryBank, addr: u32, src: u8);
     }
 }

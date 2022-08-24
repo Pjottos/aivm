@@ -1,4 +1,7 @@
-use crate::{codegen, compile::CompareKind};
+use crate::{
+    codegen::{self, private::MemoryBank},
+    compile::CompareKind,
+};
 
 use cranelift::{
     codegen::{
@@ -20,9 +23,11 @@ use std::{
     num::NonZeroU32,
 };
 
-const VAR_MEM_START: u32 = 64;
+const VAR_INPUT_START: u32 = 64;
+const VAR_OUTPUT_START: u32 = 65;
+const VAR_MEM_START: u32 = 66;
 /// Temporary, for use in the swap instruction.
-const VAR_TMP: u32 = 65;
+const VAR_TMP: u32 = 67;
 
 /// A code generator that uses cranelift to JIT compile AIVM code into native machine code.
 pub struct Cranelift {
@@ -76,9 +81,11 @@ impl codegen::private::CodeGeneratorImpl for Cranelift {
 
         let mut builder = FunctionBuilder::new(&mut self.ctx.func, &mut self.func_ctx);
 
-        for i in 0..VAR_MEM_START {
+        for i in 0..VAR_INPUT_START {
             builder.declare_var(Variable::with_u32(i), ir::types::I64);
         }
+        builder.declare_var(Variable::with_u32(VAR_INPUT_START), ir::types::R64);
+        builder.declare_var(Variable::with_u32(VAR_OUTPUT_START), ir::types::R64);
         builder.declare_var(Variable::with_u32(VAR_MEM_START), ir::types::R64);
         builder.declare_var(Variable::with_u32(VAR_TMP), ir::types::I64);
 
@@ -87,6 +94,10 @@ impl codegen::private::CodeGeneratorImpl for Cranelift {
         builder.seal_block(main_block);
         builder.switch_to_block(main_block);
 
+        let input_start = builder.block_params(main_block)[0];
+        builder.def_var(Variable::with_u32(VAR_INPUT_START), input_start);
+        let output_start = builder.block_params(main_block)[0];
+        builder.def_var(Variable::with_u32(VAR_OUTPUT_START), output_start);
         let mem_start = builder.block_params(main_block)[0];
         builder.def_var(Variable::with_u32(VAR_MEM_START), mem_start);
 
@@ -101,7 +112,7 @@ impl codegen::private::CodeGeneratorImpl for Cranelift {
         }
     }
 
-    fn finish(&mut self, memory_size: u32) -> Self::Runner {
+    fn finish(&mut self, input_size: u32, output_size: u32, memory_size: u32) -> Self::Runner {
         self.define_cur_function();
         self.module.finalize_definitions();
 
@@ -112,7 +123,9 @@ impl codegen::private::CodeGeneratorImpl for Cranelift {
         Runner {
             func_id: self.functions[0],
             module: Some(module),
-            memory_size: memory_size.try_into().unwrap(),
+            input_size,
+            output_size,
+            memory_size,
         }
     }
 }
@@ -136,6 +149,8 @@ impl Cranelift {
 
     fn make_signature(&self) -> Signature {
         let mut sig = self.module.make_signature();
+        sig.params.push(ir::AbiParam::new(ir::types::R64));
+        sig.params.push(ir::AbiParam::new(ir::types::R64));
         sig.params.push(ir::AbiParam::new(ir::types::R64));
 
         sig
@@ -208,8 +223,12 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             )
         });
 
+        let input_start = self.builder.use_var(Variable::with_u32(VAR_INPUT_START));
+        let output_start = self.builder.use_var(Variable::with_u32(VAR_OUTPUT_START));
         let mem_start = self.builder.use_var(Variable::with_u32(VAR_MEM_START));
-        self.builder.ins().call(func_ref, &[mem_start]);
+        self.builder
+            .ins()
+            .call(func_ref, &[input_start, output_start, mem_start]);
     }
 
     fn emit_nop(&mut self) {}
@@ -420,8 +439,13 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
         });
     }
 
-    fn emit_mem_load(&mut self, dst: u8, addr: u32) {
-        let mem_start = self.builder.use_var(Variable::with_u32(VAR_MEM_START));
+    fn emit_mem_load(&mut self, bank: MemoryBank, dst: u8, addr: u32) {
+        let mem_start_var = match bank {
+            MemoryBank::Input => VAR_INPUT_START,
+            MemoryBank::Memory => VAR_MEM_START,
+            MemoryBank::Output => panic!("tried to load from output"),
+        };
+        let mem_start = self.builder.use_var(Variable::with_u32(mem_start_var));
 
         let v = self.builder.ins().load(
             ir::types::I64,
@@ -432,10 +456,15 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
         self.builder.def_var(Self::var(dst), v);
     }
 
-    fn emit_mem_store(&mut self, addr: u32, src: u8) {
+    fn emit_mem_store(&mut self, bank: MemoryBank, addr: u32, src: u8) {
         let v = self.use_var(src);
 
-        let mem_start = self.builder.use_var(Variable::with_u32(VAR_MEM_START));
+        let mem_start_var = match bank {
+            MemoryBank::Output => VAR_OUTPUT_START,
+            MemoryBank::Memory => VAR_MEM_START,
+            MemoryBank::Input => panic!("tried to store to input"),
+        };
+        let mem_start = self.builder.use_var(Variable::with_u32(mem_start_var));
         self.builder.ins().store(
             MemFlags::trusted(),
             v,
@@ -476,22 +505,26 @@ impl<'a> Emitter<'a> {
 pub struct Runner {
     func_id: FuncId,
     module: Option<JITModule>,
-    memory_size: usize,
+    input_size: u32,
+    output_size: u32,
+    memory_size: u32,
 }
 
 impl crate::Runner for Runner {
-    fn step(&self, memory: &mut [i64]) {
+    fn step(&self, input: &[i64], output: &mut [i64], memory: &mut [i64]) {
         // It would be unsound to call the compiled code with an invalid pointer.
-        assert!(memory.len() >= self.memory_size);
+        assert!(self.input_size as usize <= input.len());
+        assert!(self.output_size as usize <= output.len());
+        assert!(self.memory_size as usize <= memory.len());
 
         let ptr = self
             .module
             .as_ref()
             .unwrap()
             .get_finalized_function(self.func_id);
-        let main: fn(*mut i64) = unsafe { mem::transmute(ptr) };
+        let main: fn(*const i64, *mut i64, *mut i64) = unsafe { mem::transmute(ptr) };
 
-        main(memory.as_mut_ptr());
+        main(input.as_ptr(), output.as_mut_ptr(), memory.as_mut_ptr());
     }
 }
 
