@@ -1,6 +1,6 @@
 use crate::{
-    codegen::{self, private::MemoryBank},
-    compile::CompareKind,
+    codegen,
+    compile::{CompareKind, MemoryBank},
 };
 
 use std::{

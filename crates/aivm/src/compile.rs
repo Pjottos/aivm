@@ -1,8 +1,5 @@
 use crate::{
-    codegen::{
-        private::{Emitter, MemoryBank},
-        CodeGenerator,
-    },
+    codegen::{private::Emitter, CodeGenerator},
     DefaultFrequencies, InstructionFrequencies, Runner,
 };
 
@@ -14,6 +11,13 @@ pub enum CompareKind {
     Neq,
     Gt,
     Lt,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum MemoryBank {
+    Input,
+    Output,
+    Memory,
 }
 
 /// Structure for compiling AIVM code.
@@ -281,7 +285,7 @@ fn branch_offset(imm: u32, func: &Function, cur_offset: u32) -> Option<u32> {
 
     if max_offset > 1 {
         let offset = imm % max_offset;
-        if offset > 1 {
+        if offset != 0 {
             return Some(offset);
         }
     }
@@ -300,33 +304,5 @@ impl Function {
             first_instruction,
             instruction_count: 0,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use rand::prelude::*;
-
-    #[cfg(feature = "cranelift")]
-    #[test]
-    fn sample() {
-        let mut code = [0; 256];
-        thread_rng().fill(&mut code);
-        let input = [0; 256];
-        let mut output = [0; 128];
-        let mut mem = [0; 64];
-
-        let gen = crate::codegen::Cranelift::new();
-        let mut compiler = Compiler::new(gen);
-        let mut runner = compiler.compile(&code, 4, 256, 128, 64);
-
-        thread_rng().fill(&mut code);
-        let mut runner2 = compiler.compile(&code, 4, 256, 128, 64);
-
-        drop(compiler);
-
-        runner2.step(&input, &mut output, &mut mem);
-        runner.step(&input, &mut output, &mut mem);
     }
 }
