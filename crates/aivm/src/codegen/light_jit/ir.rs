@@ -63,6 +63,13 @@ impl<'a> Emitter<'a> {
         self.finish_block();
     }
 
+    fn finish_block_with_fall_through(&mut self) {
+        self.cur_block.terminator_idx = self.cur_block.instructions.len();
+        self.cur_block.instructions.push(Instruction::FallThrough);
+        self.cur_block.exit.target = self.next_block_name();
+        self.finish_block();
+    }
+
     fn def_var(&mut self, name: u8) -> Var {
         self.var_versions[name as usize] += 1;
         self.use_var(name)
@@ -87,10 +94,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
                 self.block_targets.swap_remove(i);
                 // Begin new block for branch to jump to
                 if !self.cur_block.instructions.is_empty() {
-                    self.cur_block.terminator_idx = self.cur_block.instructions.len();
-                    self.cur_block.instructions.push(Instruction::FallThrough);
-                    self.cur_block.exit.target = self.next_block_name();
-                    self.finish_block();
+                    self.finish_block_with_fall_through();
                 }
 
                 self.func.blocks[block_idx].branch_exit = Some(BlockExit {
@@ -107,10 +111,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
 
     fn finalize(&mut self) {
         if !self.cur_block.instructions.is_empty() {
-            self.cur_block.terminator_idx = self.cur_block.instructions.len();
-            self.cur_block.instructions.push(Instruction::FallThrough);
-            self.cur_block.exit.target = self.next_block_name();
-            self.finish_block();
+            self.finish_block_with_fall_through();
         }
 
         self.cur_block.terminator_idx = 0;
