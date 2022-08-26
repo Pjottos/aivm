@@ -47,6 +47,22 @@ impl<'a> Emitter<'a> {
         self.func.blocks.push(block);
     }
 
+    fn finish_block_with_branch(&mut self, inst: Instruction, offset: u32) {
+        let next_block_name = self.next_block_name();
+        let cur_block_name = self.cur_block_name();
+
+        let block = &mut self.cur_block;
+        block.terminator_idx = block.instructions.len();
+        block.instructions.push(inst);
+        block.exit.target = next_block_name;
+
+        let target_instruction = self.instruction_count - 1 + offset;
+        self.block_targets
+            .push((cur_block_name, target_instruction));
+
+        self.finish_block();
+    }
+
     fn def_var(&mut self, name: u8) -> Var {
         self.var_versions[name as usize] += 1;
         self.use_var(name)
@@ -314,62 +330,26 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
     }
 
     fn emit_branch_cmp(&mut self, a: u8, b: u8, compare_kind: CompareKind, offset: u32) {
-        let next_block_name = self.next_block_name();
-        let cur_block_name = self.cur_block_name();
         let inst = Instruction::BranchCmp {
             a: self.use_var(a),
             b: self.use_var(b),
             compare_kind,
         };
-
-        let block = &mut self.cur_block;
-        block.terminator_idx = block.instructions.len();
-        block.instructions.push(inst);
-        block.exit.target = next_block_name;
-
-        let target_instruction = self.instruction_count - 1 + offset;
-        self.block_targets
-            .push((cur_block_name, target_instruction));
-
-        self.finish_block();
+        self.finish_block_with_branch(inst, offset);
     }
 
     fn emit_branch_zero(&mut self, src: u8, offset: u32) {
-        let next_block_name = self.next_block_name();
-        let cur_block_name = self.cur_block_name();
         let inst = Instruction::BranchZero {
             src: self.use_var(src),
         };
-
-        let block = &mut self.cur_block;
-        block.terminator_idx = block.instructions.len();
-        block.instructions.push(inst);
-        block.exit.target = next_block_name;
-
-        let target_instruction = self.instruction_count - 1 + offset;
-        self.block_targets
-            .push((cur_block_name, target_instruction));
-
-        self.finish_block();
+        self.finish_block_with_branch(inst, offset);
     }
 
     fn emit_branch_non_zero(&mut self, src: u8, offset: u32) {
-        let next_block_name = self.next_block_name();
-        let cur_block_name = self.cur_block_name();
         let inst = Instruction::BranchNonZero {
             src: self.use_var(src),
         };
-
-        let block = &mut self.cur_block;
-        block.terminator_idx = block.instructions.len();
-        block.instructions.push(inst);
-        block.exit.target = next_block_name;
-
-        let target_instruction = self.instruction_count - 1 + offset;
-        self.block_targets
-            .push((cur_block_name, target_instruction));
-
-        self.finish_block();
+        self.finish_block_with_branch(inst, offset);
     }
 
     fn emit_mem_load(&mut self, bank: MemoryBank, dst: u8, addr: u32) {
