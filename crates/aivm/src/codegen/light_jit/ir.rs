@@ -44,6 +44,9 @@ impl<'a> Emitter<'a> {
     fn finish_block(&mut self) {
         let mut block = Block::default();
         std::mem::swap(&mut self.cur_block, &mut block);
+        if block.exit.target == self.next_block_name() {
+            self.cur_block.predecessors.push(self.cur_block_name());
+        }
         self.func.blocks.push(block);
     }
 
@@ -89,18 +92,18 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
         let mut i = 0;
         while i < self.block_targets.len() {
             if self.block_targets[i].1 == self.instruction_count {
-                let block_idx = self.block_targets[i].0 .0 as usize;
+                let (block_name, _) = self.block_targets.swap_remove(i);
 
-                self.block_targets.swap_remove(i);
                 // Begin new block for branch to jump to
                 if !self.cur_block.instructions.is_empty() {
                     self.finish_block_with_fall_through();
                 }
 
-                self.func.blocks[block_idx].branch_exit = Some(BlockExit {
-                    target: self.next_block_name(),
+                self.func.blocks[block_name.0 as usize].branch_exit = Some(BlockExit {
+                    target: self.cur_block_name(),
                     args: vec![],
                 });
+                self.cur_block.predecessors.push(block_name);
             } else {
                 i += 1;
             }
@@ -379,6 +382,7 @@ pub struct Function {
 
 #[derive(Debug)]
 pub struct Block {
+    predecessors: Vec<BlockName>,
     instructions: Vec<Instruction>,
     terminator_idx: usize,
     exit: BlockExit,
@@ -388,6 +392,7 @@ pub struct Block {
 impl Default for Block {
     fn default() -> Self {
         Self {
+            predecessors: vec![],
             instructions: vec![],
             terminator_idx: usize::MAX,
             exit: BlockExit {
