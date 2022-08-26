@@ -544,8 +544,26 @@ impl Drop for Runner {
 
 #[cfg(test)]
 mod tests {
-    //use super::*;
+    use super::*;
 
     #[test]
-    fn test() {}
+    fn sample() {
+        let mut code = [0; 256];
+        thread_rng().fill(&mut code);
+        let input = [0; 256];
+        let mut output = [0; 128];
+        let mut mem = [0; 64];
+
+        let gen = Cranelift::new();
+        let mut compiler = Compiler::new(gen);
+        let mut runner = compiler.compile(&code, 4, 256, 128, 64);
+
+        thread_rng().fill(&mut code);
+        let mut runner2 = compiler.compile(&code, 4, 256, 128, 64);
+
+        drop(compiler);
+
+        runner2.step(&input, &mut output, &mut mem);
+        runner.step(&input, &mut output, &mut mem);
+    }
 }

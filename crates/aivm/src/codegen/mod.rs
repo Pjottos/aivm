@@ -1,11 +1,13 @@
 #[cfg(feature = "cranelift")]
 mod cranelift;
 mod interpreter;
+mod light_jit;
 
 #[cfg(feature = "cranelift")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "cranelift")))]
 pub use self::cranelift::Cranelift;
 pub use interpreter::Interpreter;
+pub use light_jit::LightJit;
 
 /// A converter to translate VM instructions to a form that can be executed on the host platform.
 ///
@@ -15,7 +17,10 @@ pub trait CodeGenerator: private::CodeGeneratorImpl {}
 impl<T: private::CodeGeneratorImpl> CodeGenerator for T {}
 
 pub(crate) mod private {
-    use crate::{compile::CompareKind, Runner};
+    use crate::{
+        compile::{CompareKind, MemoryBank},
+        Runner,
+    };
 
     use std::num::NonZeroU32;
 
@@ -28,13 +33,6 @@ pub(crate) mod private {
         fn begin(&mut self, function_count: NonZeroU32);
         fn begin_function(&mut self, idx: u32) -> Self::Emitter<'_>;
         fn finish(&mut self, input_size: u32, output_size: u32, memory_size: u32) -> Self::Runner;
-    }
-
-    #[derive(Debug, Clone, Copy)]
-    pub enum MemoryBank {
-        Input,
-        Output,
-        Memory,
     }
 
     pub trait Emitter {
