@@ -195,6 +195,28 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
                 doms[b] = new_idom;
             }
         }
+
+        // Build dominance frontier sets
+        let mut dominance_frontiers = vec![vec![]; self.func.blocks.len()];
+        for (b, block) in self
+            .func
+            .blocks
+            .iter()
+            .enumerate()
+            .filter(|(_, b)| b.predecessors.len() > 1)
+        {
+            let b = BlockName(b as u32);
+            for p in block.predecessors.iter().copied() {
+                let mut runner = p;
+                while runner != doms[b.0 as usize] {
+                    let dominance_frontier = &mut dominance_frontiers[runner.0 as usize];
+                    if !dominance_frontier.contains(&b) {
+                        dominance_frontier.push(b);
+                    }
+                    runner = doms[runner.0 as usize];
+                }
+            }
+        }
     }
 
     fn emit_call(&mut self, idx: u32) {
