@@ -7,7 +7,7 @@ pub struct Emitter<'a> {
     func: &'a mut Function,
     var_versions: [u32; 64],
     instruction_count: u32,
-    block_targets: Vec<(BlockName, u32)>,
+    branch_targets: Vec<PendingBranchTarget>,
     cur_block: Block,
 }
 
@@ -17,7 +17,7 @@ impl<'a> Emitter<'a> {
             func,
             var_versions: [0; 64],
             instruction_count: 0,
-            block_targets: vec![],
+            branch_targets: vec![],
             cur_block: Block {
                 instructions: (0..64)
                     .map(|i| Instruction::Const {
@@ -43,27 +43,61 @@ impl<'a> Emitter<'a> {
 
     fn finish_block(&mut self) {
         let mut block = Block::default();
-        std::mem::swap(&mut self.cur_block, &mut block);
-        if block.exit.target == self.next_block_name() {
-            self.cur_block.predecessors.push(self.cur_block_name());
+        if self.cur_block.exit.target == self.next_block_name() {
+            block.predecessors.push(self.cur_block_name());
         }
+
+        std::mem::swap(&mut self.cur_block, &mut block);
         self.func.blocks.push(block);
     }
 
     fn finish_block_with_branch(&mut self, inst: Instruction, offset: u32) {
-        let next_block_name = self.next_block_name();
-        let cur_block_name = self.cur_block_name();
+        let block_name = self.cur_block_name();
+        let fall_through_proxy_block_name = BlockName(block_name.0 + 1);
+        let branch_proxy_block_name = BlockName(block_name.0 + 2);
+        let next_block_name = BlockName(block_name.0 + 3);
 
         let block = &mut self.cur_block;
         block.terminator_idx = block.instructions.len();
         block.instructions.push(inst);
-        block.exit.target = next_block_name;
+        block.exit.target = fall_through_proxy_block_name;
+        block.branch_exit = Some(BlockExit {
+            target: branch_proxy_block_name,
+            args: vec![],
+        });
+        self.finish_block();
+
+        // Split critical edges, since unconditional jumps don't exist and therefore all blocks
+        // have at least 1 predecessor (except the first block but it can never be the target
+        // of a branch since branches don't go backward) all edges where a branch is taken are
+        // critical. Edges where the branch is not taken are potentially critical if the following
+        // block is the target of another branch instruction so we generate a proxy block for
+        // that first
+        let fall_through_proxy_block = Block {
+            predecessors: vec![block_name],
+            terminator_idx: 0,
+            instructions: vec![Instruction::FallThrough],
+            exit: BlockExit {
+                target: next_block_name,
+                args: vec![],
+            },
+            branch_exit: None,
+        };
+        self.func.blocks.push(fall_through_proxy_block);
+
+        let branch_proxy_block = Block {
+            predecessors: vec![block_name],
+            terminator_idx: 0,
+            instructions: vec![Instruction::FallThrough],
+            ..Block::default()
+        };
+        self.func.blocks.push(branch_proxy_block);
 
         let target_instruction = self.instruction_count - 1 + offset;
-        self.block_targets
-            .push((cur_block_name, target_instruction));
-
-        self.finish_block();
+        self.branch_targets.push(PendingBranchTarget {
+            branch_proxy_block_name,
+            target_instruction,
+        });
     }
 
     fn finish_block_with_fall_through(&mut self) {
@@ -90,20 +124,22 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
     fn prepare_emit(&mut self) {
         // Use `drain_filter` when stabilized (https://github.com/rust-lang/rust/issues/43244)
         let mut i = 0;
-        while i < self.block_targets.len() {
-            if self.block_targets[i].1 == self.instruction_count {
-                let (block_name, _) = self.block_targets.swap_remove(i);
+        while i < self.branch_targets.len() {
+            if self.branch_targets[i].target_instruction == self.instruction_count {
+                let PendingBranchTarget {
+                    branch_proxy_block_name,
+                    ..
+                } = self.branch_targets.swap_remove(i);
 
                 // Begin new block for branch to jump to
                 if !self.cur_block.instructions.is_empty() {
                     self.finish_block_with_fall_through();
                 }
 
-                self.func.blocks[block_name.0 as usize].branch_exit = Some(BlockExit {
-                    target: self.cur_block_name(),
-                    args: vec![],
-                });
-                self.cur_block.predecessors.push(block_name);
+                self.cur_block.predecessors.push(branch_proxy_block_name);
+                self.func.blocks[branch_proxy_block_name.0 as usize]
+                    .exit
+                    .target = self.cur_block_name();
             } else {
                 i += 1;
             }
@@ -421,6 +457,11 @@ impl BlockName {
 pub struct BlockExit {
     target: BlockName,
     args: Vec<Var>,
+}
+
+pub struct PendingBranchTarget {
+    branch_proxy_block_name: BlockName,
+    target_instruction: u32,
 }
 
 #[derive(Debug, Clone, Copy)]
