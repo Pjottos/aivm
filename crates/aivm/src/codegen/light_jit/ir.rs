@@ -41,10 +41,6 @@ impl<'a> Emitter<'a> {
 
     fn finish_block(&mut self) {
         let mut block = Block::default();
-        if self.cur_block.exit.target == self.next_block_name() {
-            block.predecessors.push(self.cur_block_name());
-        }
-
         std::mem::swap(&mut self.cur_block, &mut block);
         self.func.blocks.push(block);
     }
@@ -64,6 +60,9 @@ impl<'a> Emitter<'a> {
             args: vec![],
         });
         self.finish_block();
+        self.cur_block
+            .predecessors
+            .push(fall_through_proxy_block_name);
 
         // Split critical edges, since unconditional jumps don't exist and therefore all blocks
         // have at least 1 predecessor (except the first block but it can never be the target
@@ -99,10 +98,12 @@ impl<'a> Emitter<'a> {
     }
 
     fn finish_block_with_fall_through(&mut self) {
+        let block_name = self.cur_block_name();
         self.cur_block.terminator_idx = self.cur_block.instructions.len();
         self.cur_block.instructions.push(Instruction::FallThrough);
         self.cur_block.exit.target = self.next_block_name();
         self.finish_block();
+        self.cur_block.predecessors.push(block_name);
     }
 
     fn def_var(&mut self, name: u8) -> Var {
