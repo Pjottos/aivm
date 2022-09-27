@@ -5,7 +5,6 @@ use crate::{
 
 pub struct Emitter<'a> {
     func: &'a mut Function,
-    var_versions: [u32; 64],
     instruction_count: u32,
     branch_targets: Vec<PendingBranchTarget>,
     cur_block: Block,
@@ -15,7 +14,6 @@ impl<'a> Emitter<'a> {
     pub fn new(func: &'a mut Function) -> Self {
         Self {
             func,
-            var_versions: [0; 64],
             instruction_count: 0,
             branch_targets: vec![],
             cur_block: Block {
@@ -108,15 +106,11 @@ impl<'a> Emitter<'a> {
     }
 
     fn def_var(&mut self, name: u8) -> Var {
-        self.var_versions[name as usize] += 1;
         self.use_var(name)
     }
 
     fn use_var(&self, name: u8) -> Var {
-        Var {
-            name,
-            version: self.var_versions[name as usize],
-        }
+        Var { name, version: 0 }
     }
 }
 
@@ -156,6 +150,51 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
         self.cur_block.terminator_idx = 0;
         self.cur_block.instructions.push(Instruction::Return);
         self.finish_block();
+
+        // Initialize dominators array
+        // The blocks array is naturally in reverse post order
+        let mut doms = vec![BlockName::INVALID; self.func.blocks.len()];
+        doms[0] = BlockName(0);
+        let mut changed = true;
+        while changed {
+            changed = false;
+
+            for (b, block) in self.func.blocks.iter().enumerate().skip(1) {
+                let mut new_idom = block
+                    .predecessors
+                    .iter()
+                    .copied()
+                    .find(|p| doms[p.0 as usize] != BlockName::INVALID)
+                    .unwrap();
+                let initial_idom = new_idom;
+
+                for predecessor in block
+                    .predecessors
+                    .iter()
+                    .copied()
+                    .filter(|&p| p != initial_idom)
+                {
+                    if doms[predecessor.0 as usize] != BlockName::INVALID {
+                        let mut finger1 = predecessor.0;
+                        let mut finger2 = new_idom.0;
+
+                        while finger1 != finger2 {
+                            while finger1 > finger2 {
+                                finger1 = doms[finger1 as usize].0;
+                            }
+                            while finger2 > finger1 {
+                                finger2 = doms[finger2 as usize].0;
+                            }
+                        }
+
+                        new_idom = BlockName(finger1);
+                    }
+                }
+
+                changed = doms[b] != new_idom;
+                doms[b] = new_idom;
+            }
+        }
     }
 
     fn emit_call(&mut self, idx: u32) {
