@@ -26,15 +26,13 @@
 //! let mut runner = compiler.compile(
 //!     &code,
 //!     LOWEST_FUNCTION_LEVEL,
+//!     MEMORY_SIZE,
 //!     INPUT_SIZE,
 //!     OUTPUT_SIZE,
-//!     MEMORY_SIZE,
 //! );
-//! let input = [0; INPUT_SIZE as usize];
-//! let mut output = [0; OUTPUT_SIZE as usize];
-//! let mut memory = [0; MEMORY_SIZE as usize];
+//! let mut memory = [0; (MEMORY_SIZE + INPUT_SIZE + OUTPUT_SIZE) as usize];
 //!
-//! runner.step(&input, &mut output, &mut memory);
+//! runner.step(&mut memory);
 //! ```
 
 /// The different code generators available.
@@ -47,9 +45,10 @@ pub use frequency::{DefaultFrequencies, InstructionFrequencies};
 
 /// Returned by a code generator to run VM code.
 pub trait Runner {
-    /// Run the VM code, calling into the main function once.
+    /// Run the VM code, clearing the output and then calling into the main function once.
     ///
-    /// The provided input, output and memory slices must be at least as big as the sizes that were
-    /// used while compiling the code.
-    fn step(&self, input: &[i64], output: &mut [i64], memory: &mut [i64]);
+    /// The provided memory slice is interpreted as the concatenation of the
+    /// memory, input and output in that order. It must be at least as big
+    /// as the sum of the sizes that were used while compiling the code.
+    fn step(&self, memory: &mut [i64]);
 }
