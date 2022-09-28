@@ -32,14 +32,12 @@ pub trait InstructionFrequencies {
     /// The frequency of the `int_max` instruction.
     const INT_MAX: u16 = 1510; // 0.02
 
-    /// The frequency of the `swap` instruction.
-    const BIT_SWAP: u16 = 1510; // 0.02
     /// The frequency of the `or` instruction.
     const BIT_OR: u16 = 1510; // 0.02
     /// The frequency of the `and` instruction.
     const BIT_AND: u16 = 1510; // 0.02
     /// The frequency of the `xor` instruction.
-    const BIT_XOR: u16 = 1510; // 0.02
+    const BIT_XOR: u16 = 3020; // 0.04
     /// The frequency of the `not` instruction.
     const BIT_NOT: u16 = 1510; // 0.02
     /// The frequency of the `shift_left` instruction.
@@ -92,7 +90,6 @@ pub trait InstructionFrequencies {
                 + i32::from(Self::INT_DEC)
                 + i32::from(Self::INT_MIN)
                 + i32::from(Self::INT_MAX)
-                + i32::from(Self::BIT_SWAP)
                 + i32::from(Self::BIT_OR)
                 + i32::from(Self::BIT_AND)
                 + i32::from(Self::BIT_XOR)

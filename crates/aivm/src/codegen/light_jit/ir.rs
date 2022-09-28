@@ -435,16 +435,6 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
         self.cur_block.instructions.end += 1;
     }
 
-    fn emit_bit_swap(&mut self, dst: u8, src: u8) {
-        let inst = Instruction {
-            kind: InstructionKind::BitSwap,
-            dst: [self.def_var(dst)],
-            src: [self.def_var(src), Var::INVALID, Var::INVALID],
-        };
-        self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
-    }
-
     fn emit_bit_or(&mut self, dst: u8, a: u8, b: u8) {
         let inst = Instruction {
             kind: InstructionKind::BitOr,
@@ -778,7 +768,6 @@ pub enum InstructionKind {
     IntDec,
     IntMin,
     IntMax,
-    BitSwap,
     BitOr,
     BitAnd,
     BitXor,
