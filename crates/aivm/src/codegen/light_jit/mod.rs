@@ -22,9 +22,7 @@ impl codegen::private::CodeGeneratorImpl for LightJit {
     }
 
     fn finish(&mut self, _input_size: u32, _output_size: u32, _memory_size: u32) -> Self::Runner {
-        if self.functions[0].blocks.len() > 1 {
-            panic!("{:#?}", self.functions);
-        }
+        panic!();
         self.functions.clear();
         Runner
     }

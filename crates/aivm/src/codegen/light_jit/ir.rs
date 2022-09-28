@@ -145,6 +145,8 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
         self.cur_block.instructions.push(Instruction::Return);
         self.finish_block();
 
+        println!("func: {:#?}", self.func.blocks);
+
         // Initialize dominators array
         // The blocks array is naturally in reverse post order
         let mut doms = vec![BlockName::INVALID; self.func.blocks.len()];
@@ -254,12 +256,8 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
     }
 
     fn emit_call(&mut self, idx: u32) {
-        let next_block_name = self.next_block_name();
-        let block = &mut self.cur_block;
-        block.terminator_idx = block.instructions.len();
-        block.instructions.push(Instruction::Call { idx });
-        block.exit = next_block_name;
-        self.finish_block();
+        let inst = Instruction::Call { idx };
+        self.cur_block.instructions.push(inst);
     }
 
     fn emit_nop(&mut self) {}
