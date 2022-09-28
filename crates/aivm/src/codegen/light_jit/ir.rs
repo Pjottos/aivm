@@ -246,6 +246,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
                 for &f in &dominance_frontiers[b.0 as usize] {
                     if !processed_blocks[f.0 as usize] {
                         self.func.blocks[f.0 as usize].params.push(Var::new(v));
+                        self.func.blocks[f.0 as usize].var_def_mask.insert(v);
                         processed_blocks.set(f.0 as usize, true);
 
                         if !pushed_blocks[f.0 as usize] {
