@@ -1,3 +1,5 @@
+use bitvec::prelude::*;
+
 use crate::{
     codegen,
     compile::{CompareKind, MemoryBank},
@@ -19,13 +21,11 @@ impl<'a> Emitter<'a> {
             cur_block: Block {
                 instructions: (0..64)
                     .map(|i| Instruction::Const {
-                        dst: Var {
-                            name: i,
-                            version: 0,
-                        },
+                        dst: Var::new(i),
                         val: 0,
                     })
                     .collect(),
+                var_def_mask: VarMask::ALL,
                 ..Block::default()
             },
         }
@@ -54,11 +54,8 @@ impl<'a> Emitter<'a> {
         let block = &mut self.cur_block;
         block.terminator_idx = block.instructions.len();
         block.instructions.push(inst);
-        block.exit.target = fall_through_proxy_block_name;
-        block.branch_exit = Some(BlockExit {
-            target: branch_proxy_block_name,
-            args: vec![],
-        });
+        block.exit = fall_through_proxy_block_name;
+        block.branch_exit = branch_proxy_block_name;
         self.finish_block();
         self.cur_block
             .predecessors
@@ -74,11 +71,8 @@ impl<'a> Emitter<'a> {
             predecessors: vec![block_name],
             terminator_idx: 0,
             instructions: vec![Instruction::FallThrough],
-            exit: BlockExit {
-                target: next_block_name,
-                args: vec![],
-            },
-            branch_exit: None,
+            exit: next_block_name,
+            ..Block::default()
         };
         self.func.blocks.push(fall_through_proxy_block);
 
@@ -101,17 +95,18 @@ impl<'a> Emitter<'a> {
         let block_name = self.cur_block_name();
         self.cur_block.terminator_idx = self.cur_block.instructions.len();
         self.cur_block.instructions.push(Instruction::FallThrough);
-        self.cur_block.exit.target = self.next_block_name();
+        self.cur_block.exit = self.next_block_name();
         self.finish_block();
         self.cur_block.predecessors.push(block_name);
     }
 
     fn def_var(&mut self, name: u8) -> Var {
-        self.use_var(name)
+        self.cur_block.var_def_mask.insert(name);
+        Var::new(name)
     }
 
     fn use_var(&self, name: u8) -> Var {
-        Var { name, version: 0 }
+        Var::new(name)
     }
 }
 
@@ -132,9 +127,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
                 }
 
                 self.cur_block.predecessors.push(branch_proxy_block_name);
-                self.func.blocks[branch_proxy_block_name.0 as usize]
-                    .exit
-                    .target = self.cur_block_name();
+                self.func.blocks[branch_proxy_block_name.0 as usize].exit = self.cur_block_name();
             } else {
                 i += 1;
             }
@@ -218,6 +211,46 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
                 }
             }
         }
+
+        // Insert block params where necessary
+        let mut processed_blocks = bitvec![0; self.func.blocks.len()];
+        let mut pushed_blocks = bitvec![0; self.func.blocks.len()];
+        let mut block_stack = vec![];
+        for v in 0..64 {
+            processed_blocks.set_elements(0);
+            pushed_blocks.set_elements(0);
+            block_stack.clear();
+
+            for b in self
+                .func
+                .blocks
+                .iter()
+                .enumerate()
+                .filter_map(|(b, block)| {
+                    block
+                        .var_def_mask
+                        .contains(v)
+                        .then_some(BlockName(b as u32))
+                })
+            {
+                block_stack.push(b);
+                pushed_blocks.set(b.0 as usize, true);
+            }
+
+            while let Some(b) = block_stack.pop() {
+                for &f in &dominance_frontiers[b.0 as usize] {
+                    if !processed_blocks[f.0 as usize] {
+                        self.func.blocks[f.0 as usize].params.push(Var::new(v));
+                        processed_blocks.set(f.0 as usize, true);
+
+                        if !pushed_blocks[f.0 as usize] {
+                            pushed_blocks.set(f.0 as usize, true);
+                            block_stack.push(f);
+                        }
+                    }
+                }
+            }
+        }
     }
 
     fn emit_call(&mut self, idx: u32) {
@@ -225,7 +258,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
         let block = &mut self.cur_block;
         block.terminator_idx = block.instructions.len();
         block.instructions.push(Instruction::Call { idx });
-        block.exit.target = next_block_name;
+        block.exit = next_block_name;
         self.finish_block();
     }
 
@@ -482,9 +515,11 @@ pub struct Function {
 pub struct Block {
     predecessors: Vec<BlockName>,
     instructions: Vec<Instruction>,
+    params: Vec<Var>,
+    var_def_mask: VarMask,
     terminator_idx: usize,
-    exit: BlockExit,
-    branch_exit: Option<BlockExit>,
+    exit: BlockName,
+    branch_exit: BlockName,
 }
 
 impl Default for Block {
@@ -492,12 +527,11 @@ impl Default for Block {
         Self {
             predecessors: vec![],
             instructions: vec![],
+            params: vec![],
+            var_def_mask: VarMask::EMPTY,
             terminator_idx: usize::MAX,
-            exit: BlockExit {
-                target: BlockName::INVALID,
-                args: vec![],
-            },
-            branch_exit: None,
+            exit: BlockName::INVALID,
+            branch_exit: BlockName::INVALID,
         }
     }
 }
@@ -508,17 +542,39 @@ pub struct Var {
     version: u32,
 }
 
+impl Var {
+    fn new(name: u8) -> Self {
+        Self { name, version: 0 }
+    }
+
+    fn set_version(&mut self, version: u32) {
+        self.version = version;
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct VarMask(u64);
+
+impl VarMask {
+    const ALL: Self = Self(u64::MAX);
+    const EMPTY: Self = Self(0);
+
+    #[inline]
+    fn insert(&mut self, var_name: u8) {
+        self.0 |= 1 << var_name;
+    }
+
+    #[inline]
+    fn contains(self, var_name: u8) -> bool {
+        self.0 & (1 << var_name) != 0
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BlockName(u32);
 
 impl BlockName {
     pub const INVALID: Self = Self(u32::MAX);
-}
-
-#[derive(Debug)]
-pub struct BlockExit {
-    target: BlockName,
-    args: Vec<Var>,
 }
 
 pub struct PendingBranchTarget {
