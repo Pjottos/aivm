@@ -2,10 +2,7 @@ use std::{fmt::Debug, ops::Range};
 
 use bitvec::prelude::*;
 
-use crate::{
-    codegen,
-    compile::{CompareKind, MemoryBank},
-};
+use crate::{codegen, compile::CompareKind};
 
 pub struct Emitter<'a> {
     func: &'a mut Function,
@@ -572,9 +569,9 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
         self.finish_block_with_branch(inst, offset);
     }
 
-    fn emit_mem_load(&mut self, bank: MemoryBank, dst: u8, addr: u32) {
+    fn emit_mem_load(&mut self, dst: u8, addr: u32) {
         let inst = Instruction {
-            kind: InstructionKind::MemLoad { bank, addr },
+            kind: InstructionKind::MemLoad { addr },
             dst: [self.def_var(dst)],
             ..Instruction::default()
         };
@@ -582,9 +579,9 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
         self.cur_block.instructions.end += 1;
     }
 
-    fn emit_mem_store(&mut self, bank: MemoryBank, addr: u32, src: u8) {
+    fn emit_mem_store(&mut self, addr: u32, src: u8) {
         let inst = Instruction {
-            kind: InstructionKind::MemStore { bank, addr },
+            kind: InstructionKind::MemStore { addr },
             src: [self.use_var(src), Var::INVALID, Var::INVALID],
             ..Instruction::default()
         };
@@ -779,6 +776,6 @@ pub enum InstructionKind {
     BitSelect,
     BitPopcnt,
     BitReverse,
-    MemLoad { bank: MemoryBank, addr: u32 },
-    MemStore { bank: MemoryBank, addr: u32 },
+    MemLoad { addr: u32 },
+    MemStore { addr: u32 },
 }

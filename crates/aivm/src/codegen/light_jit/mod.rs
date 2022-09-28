@@ -21,7 +21,7 @@ impl codegen::private::CodeGeneratorImpl for LightJit {
         ir::Emitter::new(&mut self.functions[idx as usize])
     }
 
-    fn finish(&mut self, _input_size: u32, _output_size: u32, _memory_size: u32) -> Self::Runner {
+    fn finish(&mut self, _memory_size: u32, _input_size: u32, _output_size: u32) -> Self::Runner {
         panic!();
         self.functions.clear();
         Runner
@@ -38,7 +38,7 @@ impl LightJit {
 pub struct Runner;
 
 impl crate::Runner for Runner {
-    fn step(&self, _input: &[i64], _output: &mut [i64], _memory: &mut [i64]) {}
+    fn step(&self, _memory: &mut [i64]) {}
 }
 
 #[cfg(test)]
@@ -51,16 +51,14 @@ mod tests {
     fn sample() {
         let mut code = [0; 256];
         thread_rng().fill(&mut code);
-        let input = [0; 256];
-        let mut output = [0; 128];
-        let mut mem = [0; 64];
+        let mut mem = [0; 64 + 256 + 128];
 
         let gen = LightJit::new();
         let mut compiler = Compiler::new(gen);
-        let runner = compiler.compile(&code, 4, 256, 128, 64);
+        let runner = compiler.compile(&code, 4, 64, 256, 128);
 
         drop(compiler);
 
-        runner.step(&input, &mut output, &mut mem);
+        runner.step(&mut mem);
     }
 }

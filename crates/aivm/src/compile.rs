@@ -13,13 +13,6 @@ pub enum CompareKind {
     Lt,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum MemoryBank {
-    Input,
-    Output,
-    Memory,
-}
-
 /// Structure for compiling AIVM code.
 ///
 /// It can be used for multiple compilations to reuse allocations.
@@ -54,9 +47,9 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
         self.compile_with_frequencies::<DefaultFrequencies>(
             code,
             lowest_function_level,
+            memory_size,
             input_size,
             output_size,
-            memory_size,
         )
     }
 
@@ -65,9 +58,9 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
         &mut self,
         code: &[u64],
         lowest_function_level: u32,
+        memory_size: u32,
         input_size: u32,
         output_size: u32,
-        memory_size: u32,
     ) -> impl Runner + 'static {
         assert_ne!(lowest_function_level, u32::MAX);
 
@@ -218,28 +211,28 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
                 } else if cmp_freq(&mut kind, F::MEM_LOAD) {
                     if memory_size != 0 {
                         let addr = imm % memory_size;
-                        emitter.emit_mem_load(MemoryBank::Memory, a, addr);
+                        emitter.emit_mem_load(a, addr);
                     } else {
                         emitter.emit_nop();
                     }
                 } else if cmp_freq(&mut kind, F::INPUT_LOAD) {
                     if input_size != 0 {
                         let addr = imm % input_size;
-                        emitter.emit_mem_load(MemoryBank::Input, a, addr);
+                        emitter.emit_mem_load(a, memory_size + addr);
                     } else {
                         emitter.emit_nop();
                     }
                 } else if cmp_freq(&mut kind, F::MEM_STORE) {
                     if memory_size != 0 {
                         let addr = imm % memory_size;
-                        emitter.emit_mem_store(MemoryBank::Memory, addr, a);
+                        emitter.emit_mem_store(addr, a);
                     } else {
                         emitter.emit_nop();
                     }
                 } else if cmp_freq(&mut kind, F::OUTPUT_STORE) {
                     if output_size != 0 {
                         let addr = imm % output_size;
-                        emitter.emit_mem_store(MemoryBank::Output, addr, a);
+                        emitter.emit_mem_store(memory_size + input_size + addr, a);
                     } else {
                         emitter.emit_nop();
                     }
@@ -251,7 +244,7 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
             emitter.finalize();
         }
 
-        self.gen.finish(input_size, output_size, memory_size)
+        self.gen.finish(memory_size, input_size, output_size)
     }
 
     fn clear(&mut self) {
