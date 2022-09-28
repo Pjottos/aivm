@@ -22,9 +22,10 @@ impl<'a> Emitter<'a> {
             branch_targets: vec![],
             cur_block: Block {
                 instructions: (0..64)
-                    .map(|i| Instruction::Const {
-                        dst: Var::new(i),
-                        val: 0,
+                    .map(|i| Instruction {
+                        kind: InstructionKind::Const { val: 0 },
+                        dst: [Var::new(i)],
+                        ..Instruction::default()
                     })
                     .collect(),
                 var_def_mask: VarMask::ALL,
@@ -72,7 +73,7 @@ impl<'a> Emitter<'a> {
         let fall_through_proxy_block = Block {
             predecessors: vec![block_name],
             terminator_idx: 0,
-            instructions: vec![Instruction::FallThrough],
+            instructions: vec![Instruction::fall_through()],
             exit: next_block_name,
             ..Block::default()
         };
@@ -81,7 +82,7 @@ impl<'a> Emitter<'a> {
         let branch_proxy_block = Block {
             predecessors: vec![block_name],
             terminator_idx: 0,
-            instructions: vec![Instruction::FallThrough],
+            instructions: vec![Instruction::fall_through()],
             ..Block::default()
         };
         self.func.blocks.push(branch_proxy_block);
@@ -96,7 +97,9 @@ impl<'a> Emitter<'a> {
     fn finish_block_with_fall_through(&mut self) {
         let block_name = self.cur_block_name();
         self.cur_block.terminator_idx = self.cur_block.instructions.len();
-        self.cur_block.instructions.push(Instruction::FallThrough);
+        self.cur_block
+            .instructions
+            .push(Instruction::fall_through());
         self.cur_block.exit = self.next_block_name();
         self.finish_block();
         self.cur_block.predecessors.push(block_name);
@@ -144,7 +147,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
         }
 
         self.cur_block.terminator_idx = 0;
-        self.cur_block.instructions.push(Instruction::Return);
+        self.cur_block.instructions.push(Instruction::return_());
         self.finish_block();
 
         // Initialize dominators array
@@ -303,249 +306,263 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
     }
 
     fn emit_call(&mut self, idx: u32) {
-        let inst = Instruction::Call { idx };
+        let inst = Instruction {
+            kind: InstructionKind::Call { idx },
+            ..Instruction::default()
+        };
         self.cur_block.instructions.push(inst);
     }
 
     fn emit_nop(&mut self) {}
 
     fn emit_int_add(&mut self, dst: u8, a: u8, b: u8) {
-        let inst = Instruction::IntAdd {
-            dst: self.def_var(dst),
-            a: self.use_var(a),
-            b: self.use_var(b),
+        let inst = Instruction {
+            kind: InstructionKind::IntAdd,
+            dst: [self.def_var(dst)],
+            src: [self.use_var(a), self.use_var(b), Var::INVALID],
         };
         self.cur_block.instructions.push(inst);
     }
 
     fn emit_int_sub(&mut self, dst: u8, a: u8, b: u8) {
-        let inst = Instruction::IntSub {
-            dst: self.def_var(dst),
-            a: self.use_var(a),
-            b: self.use_var(b),
+        let inst = Instruction {
+            kind: InstructionKind::IntSub,
+            dst: [self.def_var(dst)],
+            src: [self.use_var(a), self.use_var(b), Var::INVALID],
         };
         self.cur_block.instructions.push(inst);
     }
 
     fn emit_int_mul(&mut self, dst: u8, a: u8, b: u8) {
-        let inst = Instruction::IntMul {
-            dst: self.def_var(dst),
-            a: self.use_var(a),
-            b: self.use_var(b),
+        let inst = Instruction {
+            kind: InstructionKind::IntMul,
+            dst: [self.def_var(dst)],
+            src: [self.use_var(a), self.use_var(b), Var::INVALID],
         };
         self.cur_block.instructions.push(inst);
     }
 
     fn emit_int_mul_high(&mut self, dst: u8, a: u8, b: u8) {
-        let inst = Instruction::IntMulHigh {
-            dst: self.def_var(dst),
-            a: self.use_var(a),
-            b: self.use_var(b),
+        let inst = Instruction {
+            kind: InstructionKind::IntMulHigh,
+            dst: [self.def_var(dst)],
+            src: [self.use_var(a), self.use_var(b), Var::INVALID],
         };
         self.cur_block.instructions.push(inst);
     }
 
     fn emit_int_mul_high_unsigned(&mut self, dst: u8, a: u8, b: u8) {
-        let inst = Instruction::IntMulHighUnsigned {
-            dst: self.def_var(dst),
-            a: self.use_var(a),
-            b: self.use_var(b),
+        let inst = Instruction {
+            kind: InstructionKind::IntMulHighUnsigned,
+            dst: [self.def_var(dst)],
+            src: [self.use_var(a), self.use_var(b), Var::INVALID],
         };
         self.cur_block.instructions.push(inst);
     }
 
     fn emit_int_neg(&mut self, dst: u8, src: u8) {
-        let inst = Instruction::IntNeg {
-            dst: self.def_var(dst),
-            src: self.use_var(src),
+        let inst = Instruction {
+            kind: InstructionKind::IntNeg,
+            dst: [self.def_var(dst)],
+            src: [self.use_var(src), Var::INVALID, Var::INVALID],
         };
         self.cur_block.instructions.push(inst);
     }
 
     fn emit_int_abs(&mut self, dst: u8, src: u8) {
-        let inst = Instruction::IntAbs {
-            dst: self.def_var(dst),
-            src: self.use_var(src),
+        let inst = Instruction {
+            kind: InstructionKind::IntAbs,
+            dst: [self.def_var(dst)],
+            src: [self.use_var(src), Var::INVALID, Var::INVALID],
         };
         self.cur_block.instructions.push(inst);
     }
 
     fn emit_int_inc(&mut self, dst: u8) {
-        let inst = Instruction::IntInc {
-            src: self.use_var(dst),
-            dst: self.def_var(dst),
+        let inst = Instruction {
+            kind: InstructionKind::IntInc,
+            dst: [self.def_var(dst)],
+            src: [self.use_var(dst), Var::INVALID, Var::INVALID],
         };
         self.cur_block.instructions.push(inst);
     }
 
     fn emit_int_dec(&mut self, dst: u8) {
-        let inst = Instruction::IntDec {
-            src: self.use_var(dst),
-            dst: self.def_var(dst),
+        let inst = Instruction {
+            kind: InstructionKind::IntDec,
+            dst: [self.def_var(dst)],
+            src: [self.use_var(dst), Var::INVALID, Var::INVALID],
         };
         self.cur_block.instructions.push(inst);
     }
 
     fn emit_int_min(&mut self, dst: u8, a: u8, b: u8) {
-        let inst = Instruction::IntMin {
-            dst: self.def_var(dst),
-            a: self.use_var(a),
-            b: self.use_var(b),
+        let inst = Instruction {
+            kind: InstructionKind::IntMin,
+            dst: [self.def_var(dst)],
+            src: [self.use_var(a), self.use_var(b), Var::INVALID],
         };
         self.cur_block.instructions.push(inst);
     }
 
     fn emit_int_max(&mut self, dst: u8, a: u8, b: u8) {
-        let inst = Instruction::IntMax {
-            dst: self.def_var(dst),
-            a: self.use_var(a),
-            b: self.use_var(b),
+        let inst = Instruction {
+            kind: InstructionKind::IntMax,
+            dst: [self.def_var(dst)],
+            src: [self.use_var(a), self.use_var(b), Var::INVALID],
         };
         self.cur_block.instructions.push(inst);
     }
 
     fn emit_bit_swap(&mut self, dst: u8, src: u8) {
-        let inst = Instruction::BitSwap {
-            dst: self.def_var(dst),
-            src: self.def_var(src),
+        let inst = Instruction {
+            kind: InstructionKind::BitSwap,
+            dst: [self.def_var(dst)],
+            src: [self.def_var(src), Var::INVALID, Var::INVALID],
         };
         self.cur_block.instructions.push(inst);
     }
 
     fn emit_bit_or(&mut self, dst: u8, a: u8, b: u8) {
-        let inst = Instruction::BitOr {
-            dst: self.def_var(dst),
-            a: self.use_var(a),
-            b: self.use_var(b),
+        let inst = Instruction {
+            kind: InstructionKind::BitOr,
+            dst: [self.def_var(dst)],
+            src: [self.use_var(a), self.use_var(b), Var::INVALID],
         };
         self.cur_block.instructions.push(inst);
     }
 
     fn emit_bit_and(&mut self, dst: u8, a: u8, b: u8) {
-        let inst = Instruction::BitAnd {
-            dst: self.def_var(dst),
-            a: self.use_var(a),
-            b: self.use_var(b),
+        let inst = Instruction {
+            kind: InstructionKind::BitAnd,
+            dst: [self.def_var(dst)],
+            src: [self.use_var(a), self.use_var(b), Var::INVALID],
         };
         self.cur_block.instructions.push(inst);
     }
 
     fn emit_bit_xor(&mut self, dst: u8, a: u8, b: u8) {
-        let inst = Instruction::BitXor {
-            dst: self.def_var(dst),
-            a: self.use_var(a),
-            b: self.use_var(b),
+        let inst = Instruction {
+            kind: InstructionKind::BitXor,
+            dst: [self.def_var(dst)],
+            src: [self.use_var(a), self.use_var(b), Var::INVALID],
         };
         self.cur_block.instructions.push(inst);
     }
 
     fn emit_bit_not(&mut self, dst: u8, src: u8) {
-        let inst = Instruction::BitNot {
-            dst: self.def_var(dst),
-            src: self.use_var(src),
+        let inst = Instruction {
+            kind: InstructionKind::BitNot,
+            dst: [self.def_var(dst)],
+            src: [self.use_var(src), Var::INVALID, Var::INVALID],
         };
         self.cur_block.instructions.push(inst);
     }
 
     fn emit_bit_shift_left(&mut self, dst: u8, src: u8, amount: u8) {
-        let inst = Instruction::BitShiftLeft {
-            dst: self.def_var(dst),
-            src: self.use_var(src),
-            amount,
+        let inst = Instruction {
+            kind: InstructionKind::BitShiftLeft { amount },
+            dst: [self.def_var(dst)],
+            src: [self.use_var(src), Var::INVALID, Var::INVALID],
         };
         self.cur_block.instructions.push(inst);
     }
 
     fn emit_bit_shift_right(&mut self, dst: u8, src: u8, amount: u8) {
-        let inst = Instruction::BitShiftRight {
-            dst: self.def_var(dst),
-            src: self.use_var(src),
-            amount,
+        let inst = Instruction {
+            kind: InstructionKind::BitShiftRight { amount },
+            dst: [self.def_var(dst)],
+            src: [self.use_var(src), Var::INVALID, Var::INVALID],
         };
         self.cur_block.instructions.push(inst);
     }
 
     fn emit_bit_rotate_left(&mut self, dst: u8, src: u8, amount: u8) {
-        let inst = Instruction::BitRotateLeft {
-            dst: self.def_var(dst),
-            src: self.use_var(src),
-            amount,
+        let inst = Instruction {
+            kind: InstructionKind::BitRotateLeft { amount },
+            dst: [self.def_var(dst)],
+            src: [self.use_var(src), Var::INVALID, Var::INVALID],
         };
         self.cur_block.instructions.push(inst);
     }
 
     fn emit_bit_rotate_right(&mut self, dst: u8, src: u8, amount: u8) {
-        let inst = Instruction::BitRotateRight {
-            dst: self.def_var(dst),
-            src: self.use_var(src),
-            amount,
+        let inst = Instruction {
+            kind: InstructionKind::BitRotateRight { amount },
+            dst: [self.def_var(dst)],
+            src: [self.use_var(src), Var::INVALID, Var::INVALID],
         };
         self.cur_block.instructions.push(inst);
     }
 
     fn emit_bit_select(&mut self, dst: u8, mask: u8, a: u8, b: u8) {
-        let inst = Instruction::BitSelect {
-            dst: self.def_var(dst),
-            mask: self.use_var(mask),
-            a: self.use_var(a),
-            b: self.use_var(b),
+        let inst = Instruction {
+            kind: InstructionKind::BitSelect,
+            dst: [self.def_var(dst)],
+            src: [self.use_var(mask), self.use_var(a), self.use_var(b)],
         };
         self.cur_block.instructions.push(inst);
     }
 
     fn emit_bit_popcnt(&mut self, dst: u8, src: u8) {
-        let inst = Instruction::BitPopcnt {
-            dst: self.def_var(dst),
-            src: self.use_var(src),
+        let inst = Instruction {
+            kind: InstructionKind::BitPopcnt,
+            dst: [self.def_var(dst)],
+            src: [self.use_var(src), Var::INVALID, Var::INVALID],
         };
         self.cur_block.instructions.push(inst);
     }
 
     fn emit_bit_reverse(&mut self, dst: u8, src: u8) {
-        let inst = Instruction::BitReverse {
-            dst: self.def_var(dst),
-            src: self.use_var(src),
+        let inst = Instruction {
+            kind: InstructionKind::BitReverse,
+            dst: [self.def_var(dst)],
+            src: [self.use_var(src), Var::INVALID, Var::INVALID],
         };
         self.cur_block.instructions.push(inst);
     }
 
     fn emit_branch_cmp(&mut self, a: u8, b: u8, compare_kind: CompareKind, offset: u32) {
-        let inst = Instruction::BranchCmp {
-            a: self.use_var(a),
-            b: self.use_var(b),
-            compare_kind,
+        let inst = Instruction {
+            kind: InstructionKind::BranchCmp { compare_kind },
+            src: [self.use_var(a), self.use_var(b), Var::INVALID],
+            ..Instruction::default()
         };
         self.finish_block_with_branch(inst, offset);
     }
 
     fn emit_branch_zero(&mut self, src: u8, offset: u32) {
-        let inst = Instruction::BranchZero {
-            src: self.use_var(src),
+        let inst = Instruction {
+            kind: InstructionKind::BranchZero,
+            src: [self.use_var(src), Var::INVALID, Var::INVALID],
+            ..Instruction::default()
         };
         self.finish_block_with_branch(inst, offset);
     }
 
     fn emit_branch_non_zero(&mut self, src: u8, offset: u32) {
-        let inst = Instruction::BranchNonZero {
-            src: self.use_var(src),
+        let inst = Instruction {
+            kind: InstructionKind::BranchNonZero,
+            src: [self.use_var(src), Var::INVALID, Var::INVALID],
+            ..Instruction::default()
         };
         self.finish_block_with_branch(inst, offset);
     }
 
     fn emit_mem_load(&mut self, bank: MemoryBank, dst: u8, addr: u32) {
-        let inst = Instruction::MemLoad {
-            bank,
-            dst: self.def_var(dst),
-            addr,
+        let inst = Instruction {
+            kind: InstructionKind::MemLoad { bank, addr },
+            dst: [self.def_var(dst)],
+            ..Instruction::default()
         };
         self.cur_block.instructions.push(inst);
     }
 
     fn emit_mem_store(&mut self, bank: MemoryBank, addr: u32, src: u8) {
-        let inst = Instruction::MemStore {
-            bank,
-            addr,
-            src: self.use_var(src),
+        let inst = Instruction {
+            kind: InstructionKind::MemStore { bank, addr },
+            src: [self.use_var(src), Var::INVALID, Var::INVALID],
+            ..Instruction::default()
         };
         self.cur_block.instructions.push(inst);
     }
@@ -585,6 +602,8 @@ impl Default for Block {
 pub struct Var(u32);
 
 impl Var {
+    const INVALID: Self = Self(u32::MAX);
+
     fn new(name: u8) -> Self {
         Self((name as u32) << 26)
     }
@@ -608,10 +627,14 @@ impl Var {
 
 impl Debug for Var {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Var")
-            .field("name", &self.name())
-            .field("version", &self.version())
-            .finish()
+        if *self == Self::INVALID {
+            f.write_str("Var::INVALID")
+        } else {
+            f.debug_struct("Var")
+                .field("name", &self.name())
+                .field("version", &self.version())
+                .finish()
+        }
     }
 }
 
@@ -646,144 +669,71 @@ pub struct PendingBranchTarget {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum Instruction {
+pub struct Instruction {
+    kind: InstructionKind,
+    dst: [Var; 1],
+    src: [Var; 3],
+}
+
+impl Instruction {
+    fn fall_through() -> Self {
+        Self {
+            kind: InstructionKind::FallThrough,
+            ..Self::default()
+        }
+    }
+
+    fn return_() -> Self {
+        Self {
+            kind: InstructionKind::Return,
+            ..Self::default()
+        }
+    }
+}
+
+impl Default for Instruction {
+    fn default() -> Self {
+        Self {
+            kind: InstructionKind::Return,
+            dst: [Var::INVALID; 1],
+            src: [Var::INVALID; 3],
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum InstructionKind {
     Return,
     FallThrough,
-    Const {
-        dst: Var,
-        val: i64,
-    },
+    Const { val: i64 },
 
-    Call {
-        idx: u32,
-    },
-    BranchCmp {
-        a: Var,
-        b: Var,
-        compare_kind: CompareKind,
-    },
-    BranchZero {
-        src: Var,
-    },
-    BranchNonZero {
-        src: Var,
-    },
-    IntAdd {
-        dst: Var,
-        a: Var,
-        b: Var,
-    },
-    IntSub {
-        dst: Var,
-        a: Var,
-        b: Var,
-    },
-    IntMul {
-        dst: Var,
-        a: Var,
-        b: Var,
-    },
-    IntMulHigh {
-        dst: Var,
-        a: Var,
-        b: Var,
-    },
-    IntMulHighUnsigned {
-        dst: Var,
-        a: Var,
-        b: Var,
-    },
-    IntNeg {
-        dst: Var,
-        src: Var,
-    },
-    IntAbs {
-        dst: Var,
-        src: Var,
-    },
-    IntInc {
-        dst: Var,
-        src: Var,
-    },
-    IntDec {
-        dst: Var,
-        src: Var,
-    },
-    IntMin {
-        dst: Var,
-        a: Var,
-        b: Var,
-    },
-    IntMax {
-        dst: Var,
-        a: Var,
-        b: Var,
-    },
-    BitSwap {
-        dst: Var,
-        src: Var,
-    },
-    BitOr {
-        dst: Var,
-        a: Var,
-        b: Var,
-    },
-    BitAnd {
-        dst: Var,
-        a: Var,
-        b: Var,
-    },
-    BitXor {
-        dst: Var,
-        a: Var,
-        b: Var,
-    },
-    BitNot {
-        dst: Var,
-        src: Var,
-    },
-    BitShiftLeft {
-        dst: Var,
-        src: Var,
-        amount: u8,
-    },
-    BitShiftRight {
-        dst: Var,
-        src: Var,
-        amount: u8,
-    },
-    BitRotateLeft {
-        dst: Var,
-        src: Var,
-        amount: u8,
-    },
-    BitRotateRight {
-        dst: Var,
-        src: Var,
-        amount: u8,
-    },
-    BitSelect {
-        dst: Var,
-        mask: Var,
-        a: Var,
-        b: Var,
-    },
-    BitPopcnt {
-        dst: Var,
-        src: Var,
-    },
-    BitReverse {
-        dst: Var,
-        src: Var,
-    },
-    MemLoad {
-        bank: MemoryBank,
-        dst: Var,
-        addr: u32,
-    },
-    MemStore {
-        bank: MemoryBank,
-        addr: u32,
-        src: Var,
-    },
+    Call { idx: u32 },
+    BranchCmp { compare_kind: CompareKind },
+    BranchZero,
+    BranchNonZero,
+    IntAdd,
+    IntSub,
+    IntMul,
+    IntMulHigh,
+    IntMulHighUnsigned,
+    IntNeg,
+    IntAbs,
+    IntInc,
+    IntDec,
+    IntMin,
+    IntMax,
+    BitSwap,
+    BitOr,
+    BitAnd,
+    BitXor,
+    BitNot,
+    BitShiftLeft { amount: u8 },
+    BitShiftRight { amount: u8 },
+    BitRotateLeft { amount: u8 },
+    BitRotateRight { amount: u8 },
+    BitSelect,
+    BitPopcnt,
+    BitReverse,
+    MemLoad { bank: MemoryBank, addr: u32 },
+    MemStore { bank: MemoryBank, addr: u32 },
 }
