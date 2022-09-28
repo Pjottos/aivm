@@ -54,7 +54,6 @@ pub(crate) mod private {
         fn emit_int_min(&mut self, dst: u8, a: u8, b: u8);
         fn emit_int_max(&mut self, dst: u8, a: u8, b: u8);
 
-        fn emit_bit_swap(&mut self, dst: u8, src: u8);
         fn emit_bit_or(&mut self, dst: u8, a: u8, b: u8);
         fn emit_bit_and(&mut self, dst: u8, a: u8, b: u8);
         fn emit_bit_xor(&mut self, dst: u8, a: u8, b: u8);

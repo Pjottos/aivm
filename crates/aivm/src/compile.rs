@@ -168,8 +168,6 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
                     emitter.emit_int_min(a, b, c);
                 } else if cmp_freq(&mut kind, F::INT_MAX) {
                     emitter.emit_int_max(a, b, c);
-                } else if cmp_freq(&mut kind, F::BIT_SWAP) {
-                    emitter.emit_bit_swap(a, b);
                 } else if cmp_freq(&mut kind, F::BIT_OR) {
                     emitter.emit_bit_or(a, b, c);
                 } else if cmp_freq(&mut kind, F::BIT_AND) {

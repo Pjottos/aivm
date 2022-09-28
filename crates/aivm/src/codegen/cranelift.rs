@@ -319,18 +319,6 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
         self.builder.def_var(Self::var(dst), res);
     }
 
-    fn emit_bit_swap(&mut self, dst: u8, src: u8) {
-        let a = self.use_var(dst);
-        let b = self.use_var(src);
-
-        let tmp_var = Variable::with_u32(VAR_TMP);
-        self.builder.def_var(tmp_var, a);
-        let tmp = self.builder.use_var(tmp_var);
-
-        self.builder.def_var(Self::var(dst), b);
-        self.builder.def_var(Self::var(src), tmp);
-    }
-
     fn emit_bit_or(&mut self, dst: u8, a: u8, b: u8) {
         let a = self.use_var(a);
         let b = self.use_var(b);

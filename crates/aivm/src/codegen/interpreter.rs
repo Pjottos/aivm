@@ -130,7 +130,6 @@ impl Runner {
                     stack[usize::from(dst)] = stack[usize::from(a)].min(stack[usize::from(b)])
                 }
 
-                BitSwap { dst, src } => stack.swap(usize::from(dst), usize::from(src)),
                 BitOr { dst, a, b } => {
                     stack[usize::from(dst)] = stack[usize::from(a)] | stack[usize::from(b)]
                 }
@@ -281,10 +280,6 @@ enum Instruction {
         b: u8,
     },
 
-    BitSwap {
-        dst: u8,
-        src: u8,
-    },
     BitOr {
         dst: u8,
         a: u8,
@@ -413,9 +408,6 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
         self.func.push(Instruction::IntMax { dst, a, b });
     }
 
-    fn emit_bit_swap(&mut self, dst: u8, src: u8) {
-        self.func.push(Instruction::BitSwap { dst, src });
-    }
     fn emit_bit_or(&mut self, dst: u8, a: u8, b: u8) {
         self.func.push(Instruction::BitOr { dst, a, b });
     }
