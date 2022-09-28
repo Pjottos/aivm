@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use bitvec::prelude::*;
 
 use crate::{
@@ -579,25 +581,37 @@ impl Default for Block {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Var {
-    name: u8,
-    version: u32,
-}
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct Var(u32);
 
 impl Var {
     fn new(name: u8) -> Self {
-        Self { name, version: 0 }
+        Self((name as u32) << 26)
     }
 
     #[inline]
     fn name(self) -> u8 {
-        self.name
+        (self.0 >> 26) as u8
+    }
+
+    #[inline]
+    fn version(self) -> u32 {
+        self.0 & 0x03FFFFFF
     }
 
     #[inline]
     fn set_version(&mut self, version: u32) {
-        self.version = version;
+        self.0 &= 0xFC000000;
+        self.0 |= 0x03FFFFFF & version;
+    }
+}
+
+impl Debug for Var {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Var")
+            .field("name", &self.name())
+            .field("version", &self.version())
+            .finish()
     }
 }
 
