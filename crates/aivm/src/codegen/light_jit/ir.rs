@@ -145,8 +145,6 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
         self.cur_block.instructions.push(Instruction::Return);
         self.finish_block();
 
-        println!("func: {:#?}", self.func.blocks);
-
         // Initialize dominators array
         // The blocks array is naturally in reverse post order
         let mut doms = vec![BlockName::INVALID; self.func.blocks.len()];
@@ -253,6 +251,53 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
                 }
             }
         }
+
+        let mut version_counters = [0; 64];
+        // Should be a stack array but Vec doesn't implement Copy
+        let mut var_stacks = vec![vec![]; 64];
+        let mut block_stack = vec![];
+
+        let mut gen_name = |v: &mut Var, var_stacks: &mut [Vec<u32>]| {
+            let counter = &mut version_counters[v.name() as usize];
+            v.set_version(*counter);
+            var_stacks[v.name() as usize].push(*counter);
+            *counter += 1;
+        };
+
+        block_stack.push((BlockName(0), BlockName(0)));
+        while let Some((b, last_child)) = block_stack.pop() {
+            let block = &mut self.func.blocks[b.0 as usize];
+            if b == last_child {
+                for var in &mut block.params {
+                    gen_name(var, &mut var_stacks);
+                }
+                for inst in &mut block.instructions {}
+            }
+
+            // Visit children in dominator tree
+            if let Some(child) = doms
+                .iter()
+                .copied()
+                .enumerate()
+                .skip(1 + last_child.0 as usize)
+                .find_map(|(c, p)| (p == b).then_some(BlockName(c as u32)))
+            {
+                block_stack.push((b, child));
+                block_stack.push((child, child));
+                continue;
+            }
+
+            for &var in &block.params {
+                var_stacks[var.name() as usize].pop();
+            }
+            for inst in &mut block.instructions {}
+        }
+
+        println!("func: {:#?}", self.func.blocks);
+        //for (i, dom) in doms.iter().enumerate() {
+        //    println!("{}: {}", i, dom.0);
+        //}
+        panic!();
     }
 
     fn emit_call(&mut self, idx: u32) {
@@ -545,6 +590,12 @@ impl Var {
         Self { name, version: 0 }
     }
 
+    #[inline]
+    fn name(self) -> u8 {
+        self.name
+    }
+
+    #[inline]
     fn set_version(&mut self, version: u32) {
         self.version = version;
     }
@@ -584,10 +635,6 @@ pub struct PendingBranchTarget {
 pub enum Instruction {
     Return,
     FallThrough,
-    Move {
-        dst: Var,
-        src: Var,
-    },
     Const {
         dst: Var,
         val: i64,
