@@ -276,7 +276,14 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
                 for var in &mut block.params {
                     gen_name(var, &mut var_stacks);
                 }
-                for inst in &mut block.instructions {}
+                for inst in &mut block.instructions {
+                    for dst in inst.dst_iter_mut() {
+                        gen_name(dst, &mut var_stacks);
+                    }
+                    for src in inst.src_iter_mut() {
+                        src.set_version(*var_stacks[src.name() as usize].last().unwrap())
+                    }
+                }
             }
 
             // Visit children in dominator tree
@@ -295,7 +302,11 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             for &var in &block.params {
                 var_stacks[var.name() as usize].pop();
             }
-            for inst in &mut block.instructions {}
+            for inst in &block.instructions {
+                for dst in inst.dst_iter() {
+                    var_stacks[dst.name() as usize].pop();
+                }
+            }
         }
 
         println!("func: {:#?}", self.func.blocks);
@@ -608,6 +619,10 @@ impl Var {
         Self((name as u32) << 26)
     }
 
+    fn is_valid(self) -> bool {
+        self != Self::INVALID
+    }
+
     #[inline]
     fn name(self) -> u8 {
         (self.0 >> 26) as u8
@@ -688,6 +703,18 @@ impl Instruction {
             kind: InstructionKind::Return,
             ..Self::default()
         }
+    }
+
+    fn dst_iter(&self) -> impl Iterator<Item = Var> {
+        self.dst.into_iter().take_while(|v| v.is_valid())
+    }
+
+    fn dst_iter_mut(&mut self) -> impl Iterator<Item = &mut Var> {
+        self.dst.iter_mut().take_while(|v| v.is_valid())
+    }
+
+    fn src_iter_mut(&mut self) -> impl Iterator<Item = &mut Var> {
+        self.src.iter_mut().take_while(|v| v.is_valid())
     }
 }
 
