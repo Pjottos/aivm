@@ -325,13 +325,12 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             live_ranges.truncate(dead_start);
         }
 
-        let reg_allocs = RegAllocations::run(self.func, live_ranges);
+        RegAllocations::run(self.func, live_ranges);
 
-        println!("allocs: {:#?}", reg_allocs);
+        //println!("allocs: {:#?}", reg_allocs);
         //for (i, live_range) in live_ranges.iter().enumerate() {
         //    println!("{}: {:?} {:?}", i, live_range.var, live_range.range);
         //}
-        panic!();
     }
 
     fn emit_call(&mut self, idx: u32) {
@@ -617,6 +616,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
 pub struct Function {
     pub blocks: Vec<Block>,
     pub instructions: Vec<Instruction>,
+    pub reg_allocs: Option<RegAllocations>,
 }
 
 #[derive(Debug)]
