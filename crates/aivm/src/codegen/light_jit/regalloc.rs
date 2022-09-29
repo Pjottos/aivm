@@ -5,13 +5,21 @@ use super::{
 
 use arrayvec::ArrayVec;
 
-use std::fmt::Debug;
+use std::{fmt::Debug, collections::HashMap};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PhysicalVar(u32);
 
 impl PhysicalVar {
     const INVALID: Self = Self(u32::MAX);
+
+    fn new_register(r: u32) -> Self {
+        Self(r & 0x7FFFFFFF)
+    }
+
+    fn new_stack(slot: u32) -> Self {
+        Self(slot | 0x80000000)
+    }
 
     fn is_valid(self) -> bool {
         self != Self::INVALID
@@ -55,19 +63,23 @@ impl RegAllocations {
             [None; 64 - Target::REGISTER_COUNT];
         let mut stack_size = 0;
 
+        let mut live_vars = HashMap::new();
+
         for (i, inst) in func.instructions.iter().enumerate() {
             let i = i as u32;
 
             for a in active_reg
                 .iter_mut()
                 .chain(active_stack.iter_mut())
-                .filter(|a| a.map_or(false, |a| a.end >= i))
+                .filter(|a| a.map_or(false, |a| a.end <= i))
             {
-                *a = None;
+                let range = a.take().unwrap();
+                live_vars.remove(&range.var);
             }
 
             while let Some(new_range) = live_ranges.next_if(|r| r.start == i) {
                 if let Some(reg) = active_reg.iter().position(Option::is_none) {
+                    live_vars.insert(new_range.var, PhysicalVar::new_register(reg as u32));
                     used_regs_mask |= 1 << reg;
                     active_reg[reg] = Some(new_range);
                 } else {
@@ -80,17 +92,21 @@ impl RegAllocations {
                         .max_by_key(|(_, a)| a.end)
                         .unwrap();
 
+                    let stack_idx = active_stack.iter().position(Option::is_none).unwrap() as u32;
+                    stack_size = stack_size.max(stack_idx + 1);
+
                     let spilled_range = if active_range.end > new_range.end {
+                        live_vars.insert(new_range.var, PhysicalVar::new_register(r as u32));
                         active_reg[r] = Some(new_range);
                         // TODO: insert move from reg to stack
+                        live_vars.insert(active_range.var, PhysicalVar::new_stack(stack_idx));
                         active_range
                     } else {
+                        live_vars.insert(new_range.var, PhysicalVar::new_stack(stack_idx));
                         new_range
                     };
 
-                    let stack_idx = active_stack.iter().position(Option::is_none).unwrap();
-                    stack_size = stack_size.max(stack_idx as u32 + 1);
-                    active_stack[stack_idx] = Some(spilled_range);
+                    active_stack[stack_idx as usize] = Some(spilled_range);
                 }
             }
         }

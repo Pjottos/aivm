@@ -650,7 +650,7 @@ impl Block {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Var(u32);
 
 impl Var {
