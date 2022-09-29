@@ -63,22 +63,20 @@ impl<'a> Emitter<'a> {
         self.cur_block.branch_exit = branch_proxy_block_name;
         self.finish_block();
 
-        // Split critical edges, since unconditional jumps don't exist and therefore all blocks
-        // have at least 1 predecessor (except the first block but it can never be the target
-        // of a branch since branches don't go backward) all edges where a branch is taken are
-        // critical. Edges where the branch is not taken are potentially critical if the following
-        // block is the target of another branch instruction so we generate a proxy block for
-        // that too
+        // Split critical edges, since most blocks have at least 1 predecessor, the previous block, most
+        // edges where a branch is taken are critical. Edges where the branch is not taken are
+        // potentially critical if the following block is the target of another branch
+        // instruction. For simplicity we always generate proxy blocks
 
         // Fall through proxy
-        self.func.instructions.push(Instruction::fall_through());
+        self.func.instructions.push(Instruction::jump());
         self.cur_block.predecessors.push(block_name);
         self.cur_block.instructions_end += 1;
         self.cur_block.exit = next_block_name;
         self.finish_block();
 
         // Branch proxy
-        self.func.instructions.push(Instruction::fall_through());
+        self.func.instructions.push(Instruction::jump());
         self.cur_block.predecessors.push(block_name);
         self.cur_block.instructions_end += 1;
         self.finish_block();
@@ -96,7 +94,7 @@ impl<'a> Emitter<'a> {
 
     fn finish_block_with_fall_through(&mut self) {
         let block_name = self.cur_block_name();
-        self.func.instructions.push(Instruction::fall_through());
+        self.func.instructions.push(Instruction::jump());
         self.cur_block.instructions_end += 1;
         self.cur_block.exit = self.next_block_name();
         self.finish_block();
@@ -738,9 +736,9 @@ pub struct Instruction {
 }
 
 impl Instruction {
-    fn fall_through() -> Self {
+    fn jump() -> Self {
         Self {
-            kind: InstructionKind::FallThrough,
+            kind: InstructionKind::Jump,
             ..Self::default()
         }
     }
@@ -778,7 +776,7 @@ impl Default for Instruction {
 #[derive(Debug, Clone, Copy)]
 pub enum InstructionKind {
     Return,
-    FallThrough,
+    Jump,
     Const { val: i64 },
 
     Call { idx: u32 },
