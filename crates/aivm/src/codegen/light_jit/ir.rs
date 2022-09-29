@@ -1,8 +1,11 @@
-use std::{fmt::Debug, ops::Range};
+use std::fmt::Debug;
 
 use bitvec::prelude::*;
 
-use crate::{codegen, compile::CompareKind};
+use crate::{
+    codegen::{self, light_jit::regalloc::RegAllocations},
+    compile::CompareKind,
+};
 
 pub struct Emitter<'a> {
     func: &'a mut Function,
@@ -23,7 +26,8 @@ impl<'a> Emitter<'a> {
             instruction_count: 0,
             branch_targets: vec![],
             cur_block: Block {
-                instructions: 0..64,
+                instructions_start: 0,
+                instructions_end: 64,
                 var_def_mask: VarMask::ALL,
                 ..Block::default()
             },
@@ -40,8 +44,8 @@ impl<'a> Emitter<'a> {
 
     fn finish_block(&mut self) {
         let mut block = Block::default();
-        block.instructions.start = self.cur_block.instructions.end;
-        block.instructions.end = block.instructions.start;
+        block.instructions_start = self.cur_block.instructions_end;
+        block.instructions_end = block.instructions_start;
 
         std::mem::swap(&mut self.cur_block, &mut block);
         self.func.blocks.push(block);
@@ -54,7 +58,7 @@ impl<'a> Emitter<'a> {
         let next_block_name = BlockName(block_name.0 + 3);
 
         self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
         self.cur_block.exit = fall_through_proxy_block_name;
         self.cur_block.branch_exit = branch_proxy_block_name;
         self.finish_block();
@@ -69,14 +73,14 @@ impl<'a> Emitter<'a> {
         // Fall through proxy
         self.func.instructions.push(Instruction::fall_through());
         self.cur_block.predecessors.push(block_name);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
         self.cur_block.exit = next_block_name;
         self.finish_block();
 
         // Branch proxy
         self.func.instructions.push(Instruction::fall_through());
         self.cur_block.predecessors.push(block_name);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
         self.finish_block();
 
         self.cur_block
@@ -93,7 +97,7 @@ impl<'a> Emitter<'a> {
     fn finish_block_with_fall_through(&mut self) {
         let block_name = self.cur_block_name();
         self.func.instructions.push(Instruction::fall_through());
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
         self.cur_block.exit = self.next_block_name();
         self.finish_block();
         self.cur_block.predecessors.push(block_name);
@@ -121,7 +125,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
                 } = self.branch_targets.swap_remove(i);
 
                 // Begin new block for branch to jump to
-                if !self.cur_block.instructions.is_empty() {
+                if self.cur_block.instructions_start == self.cur_block.instructions_end {
                     self.finish_block_with_fall_through();
                 }
 
@@ -136,12 +140,12 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
     }
 
     fn finalize(&mut self) {
-        if !self.cur_block.instructions.is_empty() {
+        if self.cur_block.instructions_start == self.cur_block.instructions_end {
             self.finish_block_with_fall_through();
         }
 
         self.func.instructions.push(Instruction::return_());
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
         self.finish_block();
 
         // Initialize dominators array
@@ -259,10 +263,10 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
         let mut live_ranges = vec![];
 
         let mut gen_name =
-            |v: &mut Var, var_stacks: &mut [Vec<(u32, Range<u32>)>], cur_instruction: u32| {
+            |v: &mut Var, var_stacks: &mut [Vec<(u32, u32, u32)>], cur_instruction: u32| {
                 let counter = &mut version_counters[v.name() as usize];
                 v.set_version(*counter);
-                var_stacks[v.name() as usize].push((*counter, cur_instruction..0));
+                var_stacks[v.name() as usize].push((*counter, cur_instruction, 0));
                 *counter += 1;
             };
 
@@ -271,9 +275,9 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             let block = &mut self.func.blocks[b.0 as usize];
             if b == last_child {
                 for var in &mut block.params {
-                    gen_name(var, &mut var_stacks, block.instructions.start);
+                    gen_name(var, &mut var_stacks, block.instructions_start);
                 }
-                for i in block.instructions.clone() {
+                for i in block.instructions_start..block.instructions_end {
                     let inst = &mut self.func.instructions[i as usize];
                     for dst in inst.dst_iter_mut() {
                         gen_name(dst, &mut var_stacks, i);
@@ -281,8 +285,8 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
                     for src in inst.src_iter_mut() {
                         let stack_entry = var_stacks[src.name() as usize].last_mut().unwrap();
                         // Update the live interval to include the current latest usage
-                        debug_assert!(i + 1 >= stack_entry.1.end);
-                        stack_entry.1.end = i + 1;
+                        debug_assert!(i + 1 >= stack_entry.2);
+                        stack_entry.2 = i + 1;
                         src.set_version(stack_entry.0);
                     }
                 }
@@ -310,29 +314,25 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
                 .flat_map(|inst| inst.dst_iter())
                 .chain(block.params.iter().copied())
             {
-                let (version, range) = var_stacks[var.name() as usize].pop().unwrap();
+                let (version, start, end) = var_stacks[var.name() as usize].pop().unwrap();
                 debug_assert_eq!(var.version(), version);
 
-                live_ranges.push(LiveRange { var, range })
+                live_ranges.push(LiveRange { var, start, end })
             }
         }
 
-        live_ranges.sort_unstable_by_key(|r| {
-            if r.range.end == 0 {
-                u32::MAX
-            } else {
-                r.range.start
-            }
-        });
+        live_ranges.sort_unstable_by_key(|r| if r.end == 0 { u32::MAX } else { r.start });
         // Don't need variables that never get read
-        if let Some(dead_start) = live_ranges.iter().rposition(|r| r.range.end != 0) {
+        if let Some(dead_start) = live_ranges.iter().rposition(|r| r.end != 0) {
             live_ranges.truncate(dead_start);
         }
 
-        //println!("func: {:#?}", self.func.blocks);
-        for (i, live_range) in live_ranges.iter().enumerate() {
-            println!("{}: {:?} {:?}", i, live_range.var, live_range.range);
-        }
+        let reg_allocs = RegAllocations::run(self.func, live_ranges);
+
+        println!("allocs: {:#?}", reg_allocs);
+        //for (i, live_range) in live_ranges.iter().enumerate() {
+        //    println!("{}: {:?} {:?}", i, live_range.var, live_range.range);
+        //}
         panic!();
     }
 
@@ -342,7 +342,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             ..Instruction::default()
         };
         self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
     }
 
     fn emit_nop(&mut self) {}
@@ -354,7 +354,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             src: [self.use_var(a), self.use_var(b), Var::INVALID],
         };
         self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
     }
 
     fn emit_int_sub(&mut self, dst: u8, a: u8, b: u8) {
@@ -364,7 +364,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             src: [self.use_var(a), self.use_var(b), Var::INVALID],
         };
         self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
     }
 
     fn emit_int_mul(&mut self, dst: u8, a: u8, b: u8) {
@@ -374,7 +374,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             src: [self.use_var(a), self.use_var(b), Var::INVALID],
         };
         self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
     }
 
     fn emit_int_mul_high(&mut self, dst: u8, a: u8, b: u8) {
@@ -384,7 +384,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             src: [self.use_var(a), self.use_var(b), Var::INVALID],
         };
         self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
     }
 
     fn emit_int_mul_high_unsigned(&mut self, dst: u8, a: u8, b: u8) {
@@ -394,7 +394,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             src: [self.use_var(a), self.use_var(b), Var::INVALID],
         };
         self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
     }
 
     fn emit_int_neg(&mut self, dst: u8, src: u8) {
@@ -404,7 +404,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             src: [self.use_var(src), Var::INVALID, Var::INVALID],
         };
         self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
     }
 
     fn emit_int_abs(&mut self, dst: u8, src: u8) {
@@ -414,7 +414,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             src: [self.use_var(src), Var::INVALID, Var::INVALID],
         };
         self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
     }
 
     fn emit_int_inc(&mut self, dst: u8) {
@@ -424,7 +424,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             src: [self.use_var(dst), Var::INVALID, Var::INVALID],
         };
         self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
     }
 
     fn emit_int_dec(&mut self, dst: u8) {
@@ -434,7 +434,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             src: [self.use_var(dst), Var::INVALID, Var::INVALID],
         };
         self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
     }
 
     fn emit_int_min(&mut self, dst: u8, a: u8, b: u8) {
@@ -444,7 +444,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             src: [self.use_var(a), self.use_var(b), Var::INVALID],
         };
         self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
     }
 
     fn emit_int_max(&mut self, dst: u8, a: u8, b: u8) {
@@ -454,7 +454,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             src: [self.use_var(a), self.use_var(b), Var::INVALID],
         };
         self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
     }
 
     fn emit_bit_or(&mut self, dst: u8, a: u8, b: u8) {
@@ -464,7 +464,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             src: [self.use_var(a), self.use_var(b), Var::INVALID],
         };
         self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
     }
 
     fn emit_bit_and(&mut self, dst: u8, a: u8, b: u8) {
@@ -474,7 +474,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             src: [self.use_var(a), self.use_var(b), Var::INVALID],
         };
         self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
     }
 
     fn emit_bit_xor(&mut self, dst: u8, a: u8, b: u8) {
@@ -484,7 +484,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             src: [self.use_var(a), self.use_var(b), Var::INVALID],
         };
         self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
     }
 
     fn emit_bit_not(&mut self, dst: u8, src: u8) {
@@ -494,7 +494,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             src: [self.use_var(src), Var::INVALID, Var::INVALID],
         };
         self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
     }
 
     fn emit_bit_shift_left(&mut self, dst: u8, src: u8, amount: u8) {
@@ -504,7 +504,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             src: [self.use_var(src), Var::INVALID, Var::INVALID],
         };
         self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
     }
 
     fn emit_bit_shift_right(&mut self, dst: u8, src: u8, amount: u8) {
@@ -514,7 +514,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             src: [self.use_var(src), Var::INVALID, Var::INVALID],
         };
         self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
     }
 
     fn emit_bit_rotate_left(&mut self, dst: u8, src: u8, amount: u8) {
@@ -524,7 +524,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             src: [self.use_var(src), Var::INVALID, Var::INVALID],
         };
         self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
     }
 
     fn emit_bit_rotate_right(&mut self, dst: u8, src: u8, amount: u8) {
@@ -534,7 +534,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             src: [self.use_var(src), Var::INVALID, Var::INVALID],
         };
         self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
     }
 
     fn emit_bit_select(&mut self, dst: u8, mask: u8, a: u8, b: u8) {
@@ -544,7 +544,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             src: [self.use_var(mask), self.use_var(a), self.use_var(b)],
         };
         self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
     }
 
     fn emit_bit_popcnt(&mut self, dst: u8, src: u8) {
@@ -554,7 +554,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             src: [self.use_var(src), Var::INVALID, Var::INVALID],
         };
         self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
     }
 
     fn emit_bit_reverse(&mut self, dst: u8, src: u8) {
@@ -564,7 +564,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             src: [self.use_var(src), Var::INVALID, Var::INVALID],
         };
         self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
     }
 
     fn emit_branch_cmp(&mut self, a: u8, b: u8, compare_kind: CompareKind, offset: u32) {
@@ -601,7 +601,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             ..Instruction::default()
         };
         self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
     }
 
     fn emit_mem_store(&mut self, addr: u32, src: u8) {
@@ -611,14 +611,14 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
             ..Instruction::default()
         };
         self.func.instructions.push(inst);
-        self.cur_block.instructions.end += 1;
+        self.cur_block.instructions_end += 1;
     }
 }
 
 #[derive(Debug, Default)]
 pub struct Function {
     pub blocks: Vec<Block>,
-    instructions: Vec<Instruction>,
+    pub instructions: Vec<Instruction>,
 }
 
 #[derive(Debug)]
@@ -626,7 +626,8 @@ pub struct Block {
     predecessors: Vec<BlockName>,
     params: Vec<Var>,
     var_def_mask: VarMask,
-    instructions: Range<u32>,
+    instructions_start: u32,
+    instructions_end: u32,
     exit: BlockName,
     branch_exit: BlockName,
 }
@@ -637,7 +638,8 @@ impl Default for Block {
             predecessors: vec![],
             params: vec![],
             var_def_mask: VarMask::EMPTY,
-            instructions: 0..0,
+            instructions_start: 0,
+            instructions_end: 0,
             exit: BlockName::INVALID,
             branch_exit: BlockName::INVALID,
         }
@@ -645,8 +647,8 @@ impl Default for Block {
 }
 
 impl Block {
-    fn instructions_as_usize(&self) -> Range<usize> {
-        self.instructions.start as usize..self.instructions.end as usize
+    fn instructions_as_usize(&self) -> std::ops::Range<usize> {
+        self.instructions_start as usize..self.instructions_end as usize
     }
 }
 
@@ -684,12 +686,9 @@ impl Var {
 impl Debug for Var {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if *self == Self::INVALID {
-            f.write_str("Var::INVALID")
+            f.write_str("INVALID")
         } else {
-            f.debug_struct("Var")
-                .field("name", &self.name())
-                .field("version", &self.version())
-                .finish()
+            f.write_fmt(format_args!("v{}_{}", self.name(), self.version()))
         }
     }
 }
@@ -712,9 +711,11 @@ impl VarMask {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct LiveRange {
-    var: Var,
-    range: Range<u32>,
+    pub var: Var,
+    pub start: u32,
+    pub end: u32,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
