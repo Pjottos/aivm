@@ -20,6 +20,7 @@ cranelift-module = { version = "0.80", optional = true }
 cranelift-native = { version = "0.80", optional = true }
 bitvec = "1"
 arrayvec = "0.7"
+dynasmrt = "1"
 
 [dev-dependencies]
 rand = "0.8"

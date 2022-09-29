@@ -8,7 +8,7 @@ use arrayvec::ArrayVec;
 use std::fmt::Debug;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-struct PhysicalVar(u32);
+pub struct PhysicalVar(u32);
 
 impl PhysicalVar {
     const INVALID: Self = Self(u32::MAX);
@@ -37,18 +37,16 @@ impl Debug for PhysicalVar {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct RegAllocations {
-    allocations: Vec<ArrayVec<PhysicalVar, { Target::MAX_INSTRUCTION_REGS }>>,
-    used_regs_mask: u64,
-    stack_size: usize,
+    pub allocations: Vec<ArrayVec<PhysicalVar, { Target::MAX_INSTRUCTION_REGS }>>,
+    pub used_regs_mask: u64,
+    pub stack_size: u32,
 }
 
 impl RegAllocations {
     /// `live_ranges` must be sorted in order of increasing start point
-    pub fn run(func: &Function, live_ranges: Vec<LiveRange>) -> Self {
-        // record block offsets
-
+    pub fn run(func: &mut Function, live_ranges: Vec<LiveRange>) {
         let mut live_ranges = live_ranges.into_iter().peekable();
         let mut active_reg: [Option<LiveRange>; Target::REGISTER_COUNT] =
             [None; Target::REGISTER_COUNT];
@@ -91,16 +89,16 @@ impl RegAllocations {
                     };
 
                     let stack_idx = active_stack.iter().position(Option::is_none).unwrap();
-                    stack_size = stack_size.max(stack_idx + 1);
+                    stack_size = stack_size.max(stack_idx as u32 + 1);
                     active_stack[stack_idx] = Some(spilled_range);
                 }
             }
         }
 
-        Self {
+        func.reg_allocs = Some(Self {
             allocations: vec![],
             used_regs_mask,
             stack_size,
-        }
+        });
     }
 }
