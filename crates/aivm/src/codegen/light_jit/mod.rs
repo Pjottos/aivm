@@ -1,6 +1,8 @@
 use crate::codegen;
 
+mod arch;
 mod ir;
+mod regalloc;
 
 /// A code generator that does very minimal optimization and generates machine code.
 #[derive(Default)]
