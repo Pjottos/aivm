@@ -256,27 +256,34 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
         // Should be a stack array but Vec doesn't implement Copy
         let mut var_stacks = vec![vec![]; 64];
         let mut block_stack = vec![];
+        let mut live_ranges = vec![];
 
-        let mut gen_name = |v: &mut Var, var_stacks: &mut [Vec<u32>]| {
-            let counter = &mut version_counters[v.name() as usize];
-            v.set_version(*counter);
-            var_stacks[v.name() as usize].push(*counter);
-            *counter += 1;
-        };
+        let mut gen_name =
+            |v: &mut Var, var_stacks: &mut [Vec<(u32, Range<u32>)>], cur_instruction: u32| {
+                let counter = &mut version_counters[v.name() as usize];
+                v.set_version(*counter);
+                var_stacks[v.name() as usize].push((*counter, cur_instruction..0));
+                *counter += 1;
+            };
 
         block_stack.push((BlockName(0), BlockName(0)));
         while let Some((b, last_child)) = block_stack.pop() {
             let block = &mut self.func.blocks[b.0 as usize];
             if b == last_child {
                 for var in &mut block.params {
-                    gen_name(var, &mut var_stacks);
+                    gen_name(var, &mut var_stacks, block.instructions.start);
                 }
-                for inst in &mut self.func.instructions[block.instructions_as_usize()] {
+                for i in block.instructions.clone() {
+                    let inst = &mut self.func.instructions[i as usize];
                     for dst in inst.dst_iter_mut() {
-                        gen_name(dst, &mut var_stacks);
+                        gen_name(dst, &mut var_stacks, i);
                     }
                     for src in inst.src_iter_mut() {
-                        src.set_version(*var_stacks[src.name() as usize].last().unwrap())
+                        let stack_entry = var_stacks[src.name() as usize].last_mut().unwrap();
+                        // Update the live interval to include the current latest usage
+                        debug_assert!(i + 1 >= stack_entry.1.end);
+                        stack_entry.1.end = i + 1;
+                        src.set_version(stack_entry.0);
                     }
                 }
             }
@@ -294,20 +301,38 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
                 continue;
             }
 
-            for &var in &block.params {
-                var_stacks[var.name() as usize].pop();
-            }
-            for inst in &self.func.instructions[block.instructions_as_usize()] {
-                for dst in inst.dst_iter() {
-                    var_stacks[dst.name() as usize].pop();
-                }
+            // Pop from stack in reverse order to match var versions
+            // Since the same variable name cannot appear twice in either the instruction
+            // destinations or the block parameters, we don't have to reverse those
+            for var in self.func.instructions[block.instructions_as_usize()]
+                .iter()
+                .rev()
+                .flat_map(|inst| inst.dst_iter())
+                .chain(block.params.iter().copied())
+            {
+                let (version, range) = var_stacks[var.name() as usize].pop().unwrap();
+                debug_assert_eq!(var.version(), version);
+
+                live_ranges.push(LiveRange { var, range })
             }
         }
 
-        println!("func: {:#?}", self.func.blocks);
-        //for (i, dom) in doms.iter().enumerate() {
-        //    println!("{}: {}", i, dom.0);
-        //}
+        live_ranges.sort_unstable_by_key(|r| {
+            if r.range.end == 0 {
+                u32::MAX
+            } else {
+                r.range.start
+            }
+        });
+        // Don't need variables that never get read
+        if let Some(dead_start) = live_ranges.iter().rposition(|r| r.range.end != 0) {
+            live_ranges.truncate(dead_start);
+        }
+
+        //println!("func: {:#?}", self.func.blocks);
+        for (i, live_range) in live_ranges.iter().enumerate() {
+            println!("{}: {:?} {:?}", i, live_range.var, live_range.range);
+        }
         panic!();
     }
 
@@ -685,6 +710,11 @@ impl VarMask {
     fn contains(self, var_name: u8) -> bool {
         self.0 & (1 << var_name) != 0
     }
+}
+
+pub struct LiveRange {
+    var: Var,
+    range: Range<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
