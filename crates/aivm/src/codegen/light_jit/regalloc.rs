@@ -63,14 +63,6 @@ impl Default for State {
 }
 
 impl State {
-    fn range(&self, var: PhysicalVar) -> LiveRange {
-        if var.is_stack() {
-            self.active_stack[var.idx() as usize].unwrap()
-        } else {
-            self.active_reg[var.idx() as usize].unwrap()
-        }
-    }
-
     fn clean_dead_vars(&mut self, i: u32) {
         for a in self
             .active_reg
@@ -274,14 +266,13 @@ impl RegAllocations {
                     None => continue 'func_inst,
                 };
 
-                if phys.is_stack() {
-                    if !Target::supports_mem_operand(inst.kind)
+                if phys.is_stack()
+                    && (!Target::supports_mem_operand(inst.kind)
                         || inst.defs.iter().any(|v| v.is_stack())
-                        || inst.uses.iter().any(|v| v.is_stack())
-                    {
-                        let reg = state.unspill(phys.idx(), &mut inst);
-                        phys = PhysicalVar::new_register(reg);
-                    }
+                        || inst.uses.iter().any(|v| v.is_stack()))
+                {
+                    let reg = state.unspill(phys.idx(), &mut inst);
+                    phys = PhysicalVar::new_register(reg);
                 }
 
                 if is_dst {
