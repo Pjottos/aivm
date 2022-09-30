@@ -1,6 +1,6 @@
 use super::{
     arch::{Target, TargetInterface},
-    ir::{Function, InstructionKind, LiveRange, Var},
+    ir::{BlockName, Function, InstructionKind, LiveRange, Var},
 };
 
 use arrayvec::ArrayVec;
@@ -203,11 +203,18 @@ impl RegAllocations {
 
         let mut live_ranges = live_ranges.into_iter().peekable();
         let mut state = State::default();
+        let mut last_block = BlockName::INVALID;
 
-        'func_inst: for (i, func_inst) in func
+        'func_inst: for (i, (b, func_inst)) in func
             .blocks
             .iter()
-            .flat_map(|b| b.instructions.iter())
+            .enumerate()
+            .flat_map(|(b, block)| {
+                block
+                    .instructions
+                    .iter()
+                    .map(move |i| (BlockName(b as u32), i))
+            })
             .enumerate()
         {
             let i = i as u32;
@@ -240,6 +247,21 @@ impl RegAllocations {
                 }
             }
 
+            // Coalesce split blocks and ignore jump instructions since they always jump
+            // to the next block, or the block that the previous block's branch instruction
+            // jumps to if the branch is taken
+            match func_inst.kind {
+                InstructionKind::Jump => continue,
+                InstructionKind::BranchCmp { .. }
+                | InstructionKind::BranchZero
+                | InstructionKind::BranchNonZero => {
+                    inst.actions.push(RegAllocAction::BranchExit(
+                        func.blocks[func.blocks[b.0 as usize].branch_exit.0 as usize].exit,
+                    ));
+                }
+                _ => (),
+            }
+
             for (is_dst, virt) in func_inst
                 .dst_iter()
                 .map(|d| (true, d))
@@ -269,6 +291,13 @@ impl RegAllocations {
                 }
             }
 
+            if b != last_block {
+                let start = last_block.0.wrapping_add(1);
+                inst.actions
+                    .extend((start..=b.0).map(|b| RegAllocAction::BlockStart(BlockName(b))));
+            }
+            last_block = b;
+
             allocs.instructions.push(inst);
         }
     }
@@ -292,4 +321,6 @@ pub struct RegAllocInstruction {
 pub enum RegAllocAction {
     RegToStack(u32, u32),
     StackToReg(u32, u32),
+    BlockStart(BlockName),
+    BranchExit(BlockName),
 }

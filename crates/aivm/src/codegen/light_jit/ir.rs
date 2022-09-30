@@ -131,7 +131,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
     }
 
     fn finalize(&mut self) {
-        if self.cur_block.instructions.is_empty() {
+        if !self.cur_block.instructions.is_empty() {
             self.finish_block_with_fall_through();
         }
 
@@ -151,7 +151,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
                     .predecessors
                     .iter()
                     .copied()
-                    .find(|p| doms[p.0 as usize] != BlockName::INVALID)
+                    .find(|p| doms[p.0 as usize].is_valid())
                     .unwrap();
                 let initial_idom = new_idom;
 
@@ -161,7 +161,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
                     .copied()
                     .filter(|&p| p != initial_idom)
                 {
-                    if doms[predecessor.0 as usize] != BlockName::INVALID {
+                    if doms[predecessor.0 as usize].is_valid() {
                         let mut finger1 = predecessor.0;
                         let mut finger2 = new_idom.0;
 
@@ -599,8 +599,8 @@ pub struct Block {
     params: Vec<Var>,
     var_def_mask: VarMask,
     pub instructions: Vec<Instruction>,
-    exit: BlockName,
-    branch_exit: BlockName,
+    pub exit: BlockName,
+    pub branch_exit: BlockName,
 }
 
 impl Default for Block {
@@ -683,10 +683,14 @@ pub struct LiveRange {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BlockName(u32);
+pub struct BlockName(pub u32);
 
 impl BlockName {
     pub const INVALID: Self = Self(u32::MAX);
+
+    pub fn is_valid(self) -> bool {
+        self != Self::INVALID
+    }
 }
 
 pub struct PendingBranchTarget {
