@@ -3,7 +3,7 @@ use crate::codegen::{
     light_jit::arch::{Target, TargetInterface},
 };
 
-use dynasmrt::{dynasm, Assembler, AssemblyOffset, DynasmApi, DynasmLabelApi, ExecutableBuffer};
+use dynasmrt::{dynasm, Assembler, AssemblyOffset, DynasmLabelApi, ExecutableBuffer};
 
 use std::mem::transmute;
 
