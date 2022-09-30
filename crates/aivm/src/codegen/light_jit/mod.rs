@@ -37,7 +37,9 @@ impl codegen::private::CodeGeneratorImpl for LightJit {
             .collect();
 
         for (f, func) in self.functions.drain(..).enumerate() {
-            let reg_allocs = func.reg_allocs.unwrap();
+            let reg_allocs = func.reg_allocs;
+
+            println!("{:#?}", reg_allocs);
 
             dynasm!(ops; =>func_labels[f]);
             Target::emit_prologue(&mut ops, reg_allocs.stack_size, reg_allocs.used_regs_mask);
