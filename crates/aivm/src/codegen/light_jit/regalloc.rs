@@ -170,7 +170,8 @@ impl State {
             return;
         }
 
-        inst.actions.push(RegAllocAction::RegToStack(stack_idx, reg));
+        inst.actions
+            .push(RegAllocAction::RegToStack(stack_idx, reg));
     }
 
     fn stack_to_reg(&mut self, reg: u32, stack_idx: u32, inst: &mut RegAllocInstruction) {
@@ -182,7 +183,8 @@ impl State {
             return;
         }
 
-        inst.actions.push(RegAllocAction::StackToReg(reg, stack_idx));
+        inst.actions
+            .push(RegAllocAction::StackToReg(reg, stack_idx));
     }
 }
 
@@ -202,7 +204,12 @@ impl RegAllocations {
         let mut live_ranges = live_ranges.into_iter().peekable();
         let mut state = State::default();
 
-        'func_inst: for (i, func_inst) in func.instructions.iter().enumerate() {
+        'func_inst: for (i, func_inst) in func
+            .blocks
+            .iter()
+            .flat_map(|b| b.instructions.iter())
+            .enumerate()
+        {
             let i = i as u32;
 
             let mut inst = RegAllocInstruction {
