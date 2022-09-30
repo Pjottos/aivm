@@ -616,7 +616,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
 pub struct Function {
     pub blocks: Vec<Block>,
     pub instructions: Vec<Instruction>,
-    pub reg_allocs: Option<RegAllocations>,
+    pub reg_allocs: RegAllocations,
 }
 
 #[derive(Debug)]
@@ -730,7 +730,7 @@ pub struct PendingBranchTarget {
 
 #[derive(Debug, Clone, Copy)]
 pub struct Instruction {
-    kind: InstructionKind,
+    pub kind: InstructionKind,
     dst: [Var; 1],
     src: [Var; 3],
 }
@@ -750,12 +750,16 @@ impl Instruction {
         }
     }
 
-    fn dst_iter(&self) -> impl Iterator<Item = Var> {
+    pub fn dst_iter(&self) -> impl Iterator<Item = Var> {
         self.dst.into_iter().take_while(|v| v.is_valid())
     }
 
     fn dst_iter_mut(&mut self) -> impl Iterator<Item = &mut Var> {
         self.dst.iter_mut().take_while(|v| v.is_valid())
+    }
+
+    pub fn src_iter(&self) -> impl Iterator<Item = Var> {
+        self.src.into_iter().take_while(|v| v.is_valid())
     }
 
     fn src_iter_mut(&mut self) -> impl Iterator<Item = &mut Var> {

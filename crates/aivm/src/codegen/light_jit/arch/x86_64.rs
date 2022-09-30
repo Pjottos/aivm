@@ -1,4 +1,4 @@
-use super::TargetInterface;
+use crate::codegen::light_jit::{arch::TargetInterface, ir::InstructionKind};
 
 use dynasmrt::{
     dynasm,
@@ -13,6 +13,28 @@ impl TargetInterface for Target {
 
     const MAX_INSTRUCTION_REGS: usize = 4;
     const REGISTER_COUNT: usize = REGISTERS.len();
+
+    fn supports_mem_operand(kind: InstructionKind) -> bool {
+        use InstructionKind::*;
+        matches!(
+            kind,
+            BranchCmp { .. }
+                | IntSub
+                | IntMul
+                | IntMulHigh
+                | IntMulHighUnsigned
+                | IntNeg
+                | BitOr
+                | BitAnd
+                | BitXor
+                | BitNot
+                | BitShiftLeft { .. }
+                | BitShiftRight { .. }
+                | BitRotateLeft { .. }
+                | BitRotateRight { .. }
+                | BitSelect
+        )
+    }
 
     fn emit_prologue<A: DynasmApi>(ops: &mut A, stack_size: u32, used_regs_mask: u64) {
         for reg in REGISTERS

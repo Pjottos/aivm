@@ -1,3 +1,5 @@
+use super::ir::InstructionKind;
+
 use dynasmrt::{relocations, DynasmApi};
 
 #[cfg(target_arch = "x86_64")]
@@ -13,6 +15,8 @@ pub trait TargetInterface {
 
     const MAX_INSTRUCTION_REGS: usize;
     const REGISTER_COUNT: usize;
+
+    fn supports_mem_operand(kind: InstructionKind) -> bool;
 
     fn emit_prologue<A: DynasmApi>(ops: &mut A, stack_size: u32, used_regs_mask: u64);
     fn emit_epilogue<A: DynasmApi>(ops: &mut A, stack_size: u32, used_regs_mask: u64);
