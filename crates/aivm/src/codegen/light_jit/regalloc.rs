@@ -162,26 +162,26 @@ impl State {
     }
 
     fn reg_to_stack(&mut self, stack_idx: u32, reg: u32, inst: &mut RegAllocInstruction) {
-        for action in &mut inst.actions {
-            match action {
-                RegAllocAction::RegToStack(s, r) if *s == stack_idx => *r = reg,
-                _ => continue,
-            }
-            return;
-        }
+        // for action in &mut inst.actions {
+        //     match action {
+        //         RegAllocAction::RegToStack(s, r) if *s == stack_idx => *r = reg,
+        //         _ => continue,
+        //     }
+        //     return;
+        // }
 
         inst.actions
             .push(RegAllocAction::RegToStack(stack_idx, reg));
     }
 
     fn stack_to_reg(&mut self, reg: u32, stack_idx: u32, inst: &mut RegAllocInstruction) {
-        for action in &mut inst.actions {
-            match action {
-                RegAllocAction::StackToReg(r, s) if *r == reg => *s = stack_idx,
-                _ => continue,
-            }
-            return;
-        }
+        // for action in &mut inst.actions {
+        //     match action {
+        //         RegAllocAction::StackToReg(r, s) if *r == reg => *s = stack_idx,
+        //         _ => continue,
+        //     }
+        //     return;
+        // }
 
         inst.actions
             .push(RegAllocAction::StackToReg(reg, stack_idx));
@@ -214,7 +214,7 @@ impl RegAllocations {
 
             let mut inst = RegAllocInstruction {
                 kind: func_inst.kind,
-                actions: ArrayVec::new(),
+                actions: vec![],
                 defs: ArrayVec::new(),
                 uses: ArrayVec::new(),
             };
@@ -285,7 +285,7 @@ pub struct RegAllocInstruction {
     pub kind: InstructionKind,
     pub defs: ArrayVec<PhysicalVar, 1>,
     pub uses: ArrayVec<PhysicalVar, 3>,
-    pub actions: ArrayVec<RegAllocAction, { Target::REGISTER_COUNT * 2 }>,
+    pub actions: Vec<RegAllocAction>,
 }
 
 #[derive(Debug)]
