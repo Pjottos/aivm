@@ -277,15 +277,15 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
                 }
                 for i in block.instructions_start..block.instructions_end {
                     let inst = &mut self.func.instructions[i as usize];
-                    for dst in inst.dst_iter_mut() {
-                        gen_name(dst, &mut var_stacks, i);
-                    }
                     for src in inst.src_iter_mut() {
                         let stack_entry = var_stacks[src.name() as usize].last_mut().unwrap();
                         // Update the live interval to include the current latest usage
                         debug_assert!(i + 1 >= stack_entry.2);
                         stack_entry.2 = i + 1;
                         src.set_version(stack_entry.0);
+                    }
+                    for dst in inst.dst_iter_mut() {
+                        gen_name(dst, &mut var_stacks, i);
                     }
                 }
             }

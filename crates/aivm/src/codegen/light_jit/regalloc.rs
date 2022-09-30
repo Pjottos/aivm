@@ -97,8 +97,7 @@ impl State {
         let stack_idx = self.alloc_stack(range);
 
         self.active_stack[stack_idx as usize] = Some(range);
-        inst.actions
-            .push(RegAllocAction::RegToStack(reg, stack_idx));
+        self.reg_to_stack(stack_idx, reg, inst);
 
         stack_idx
     }
@@ -137,17 +136,53 @@ impl State {
         let reg = if let Some(reg) = self.alloc_reg(range) {
             reg
         } else {
-            let (reg, _) = self.longest_active_reg().unwrap();
+            // Make sure we don't spill a register that's already being used in the current
+            // instruction
+            let (reg, _) = self
+                .active_reg
+                .iter()
+                .copied()
+                .enumerate()
+                .flat_map(|(r, a)| a.map(|a| (r as u32, a)))
+                .filter(|(r, _)| {
+                    let phys = PhysicalVar::new_register(*r);
+                    !inst.defs.contains(&phys) && !inst.uses.contains(&phys)
+                })
+                .max_by_key(|(_, a)| a.end)
+                .unwrap();
             self.spill_reg(reg, inst);
             self.use_reg(reg, range);
             reg
         };
 
-        inst.actions
-            .push(RegAllocAction::StackToReg(stack_idx, reg));
+        self.stack_to_reg(reg, stack_idx, inst);
         self.active_stack[stack_idx as usize] = None;
 
         reg
+    }
+
+    fn reg_to_stack(&mut self, stack_idx: u32, reg: u32, inst: &mut RegAllocInstruction) {
+        for action in &mut inst.actions {
+            match action {
+                RegAllocAction::RegToStack(s, r) if *s == stack_idx => *r = reg,
+                _ => continue,
+            }
+            return;
+        }
+
+        inst.actions.push(RegAllocAction::RegToStack(stack_idx, reg));
+    }
+
+    fn stack_to_reg(&mut self, reg: u32, stack_idx: u32, inst: &mut RegAllocInstruction) {
+        for action in &mut inst.actions {
+            match action {
+                RegAllocAction::StackToReg(r, s) if *r == reg => *s = stack_idx,
+                _ => continue,
+            }
+            return;
+        }
+
+        inst.actions.push(RegAllocAction::StackToReg(reg, stack_idx));
     }
 }
 
@@ -168,13 +203,13 @@ impl RegAllocations {
         let mut state = State::default();
 
         'func_inst: for (i, func_inst) in func.instructions.iter().enumerate() {
-            println!();
             let i = i as u32;
 
             let mut inst = RegAllocInstruction {
                 kind: func_inst.kind,
                 actions: ArrayVec::new(),
-                vars: ArrayVec::new(),
+                defs: ArrayVec::new(),
+                uses: ArrayVec::new(),
             };
 
             state.clean_dead_vars(i);
@@ -198,7 +233,11 @@ impl RegAllocations {
                 }
             }
 
-            for virt in func_inst.dst_iter().chain(func_inst.src_iter()) {
+            for (is_dst, virt) in func_inst
+                .dst_iter()
+                .map(|d| (true, d))
+                .chain(func_inst.src_iter().map(|s| (false, s)))
+            {
                 // A bit hacky, but if live_vars does not contain a referenced variable,
                 // that means this instruction is dead and we can discard it
                 let mut phys = match state.live_vars.get(&virt) {
@@ -208,14 +247,19 @@ impl RegAllocations {
 
                 if phys.is_stack() {
                     if !Target::supports_mem_operand(inst.kind)
-                        || inst.vars.iter().any(|v| v.is_stack())
+                        || inst.defs.iter().any(|v| v.is_stack())
+                        || inst.uses.iter().any(|v| v.is_stack())
                     {
                         let reg = state.unspill(phys.idx(), &mut inst);
                         phys = PhysicalVar::new_register(reg);
                     }
                 }
 
-                inst.vars.push(phys);
+                if is_dst {
+                    inst.defs.push(phys);
+                } else {
+                    inst.uses.push(phys);
+                }
             }
 
             allocs.instructions.push(inst);
@@ -232,8 +276,9 @@ impl RegAllocations {
 #[derive(Debug)]
 pub struct RegAllocInstruction {
     pub kind: InstructionKind,
-    pub vars: ArrayVec<PhysicalVar, { Target::MAX_INSTRUCTION_REGS }>,
-    pub actions: ArrayVec<RegAllocAction, { Target::MAX_INSTRUCTION_REGS * 4 }>,
+    pub defs: ArrayVec<PhysicalVar, 1>,
+    pub uses: ArrayVec<PhysicalVar, 3>,
+    pub actions: ArrayVec<RegAllocAction, { Target::REGISTER_COUNT * 2 }>,
 }
 
 #[derive(Debug)]
