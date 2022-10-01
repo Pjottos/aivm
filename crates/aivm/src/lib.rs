@@ -1,6 +1,6 @@
 #![feature(generic_associated_types)]
 #![deny(missing_docs)]
-#![cfg_attr(doc_cfg, feature(doc_cfg))]
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 //! Artificial intelligence that embraces the hardware it runs on.
 //!
@@ -14,9 +14,9 @@
 //! use aivm::{codegen, Compiler, Runner};
 //!
 //! const LOWEST_FUNCTION_LEVEL: u32 = 1;
+//! const MEMORY_SIZE: u32 = 4;
 //! const INPUT_SIZE: u32 = 4;
 //! const OUTPUT_SIZE: u32 = 4;
-//! const MEMORY_SIZE: u32 = 4;
 //!
 //! let gen = codegen::Interpreter::new();
 //! let mut compiler = Compiler::new(gen);
