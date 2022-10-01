@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use bitvec::prelude::*;
 
 use crate::{
-    codegen::{self, light_jit::regalloc::RegAllocations},
+    codegen::{self, jit::regalloc::RegAllocations},
     compile::CompareKind,
 };
 

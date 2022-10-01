@@ -1,5 +1,5 @@
 use crate::{
-    codegen::light_jit::{
+    codegen::jit::{
         arch::TargetInterface,
         ir::InstructionKind,
         regalloc::{PhysicalVar, RegAllocAction, RegAllocInstruction},

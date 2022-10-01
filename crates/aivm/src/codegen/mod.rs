@@ -1,13 +1,16 @@
 #[cfg(feature = "cranelift")]
 mod cranelift;
 mod interpreter;
-mod light_jit;
+#[cfg(feature = "jit")]
+mod jit;
 
 #[cfg(feature = "cranelift")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "cranelift")))]
 pub use self::cranelift::Cranelift;
 pub use interpreter::Interpreter;
-pub use light_jit::LightJit;
+#[cfg(feature = "jit")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "jit")))]
+pub use jit::Jit;
 
 /// A converter to translate VM instructions to a form that can be executed on the host platform.
 ///

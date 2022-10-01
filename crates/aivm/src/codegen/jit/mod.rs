@@ -1,6 +1,6 @@
 use crate::codegen::{
     self,
-    light_jit::arch::{Target, TargetInterface},
+    jit::arch::{Target, TargetInterface},
 };
 
 use dynasmrt::{dynasm, Assembler, AssemblyOffset, DynasmLabelApi, ExecutableBuffer};
@@ -11,13 +11,13 @@ mod arch;
 mod ir;
 mod regalloc;
 
-/// A code generator that does very minimal optimization and generates machine code.
+/// A code generator that does minimal optimization and generates machine code.
 #[derive(Default)]
-pub struct LightJit {
+pub struct Jit {
     functions: Vec<ir::Function>,
 }
 
-impl codegen::private::CodeGeneratorImpl for LightJit {
+impl codegen::private::CodeGeneratorImpl for Jit {
     type Emitter<'a> = ir::Emitter<'a>;
     type Runner = Runner;
 
@@ -63,7 +63,7 @@ impl codegen::private::CodeGeneratorImpl for LightJit {
     }
 }
 
-impl LightJit {
+impl Jit {
     /// Create a new generator.
     pub fn new() -> Self {
         Self::default()
