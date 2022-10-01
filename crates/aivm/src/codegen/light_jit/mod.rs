@@ -84,34 +84,8 @@ impl crate::Runner for Runner {
         let output_range = memory.len() - self.output_size as usize..;
         memory[output_range].fill(0);
 
-        println!("{:02x?}", &self.code[..]);
-
         let entry: extern "sysv64" fn(*mut i64) =
             unsafe { transmute(self.code.ptr(AssemblyOffset(0))) };
         entry(memory.as_mut_ptr());
-
-        panic!();
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{compile::Compiler, Runner};
-    use rand::prelude::*;
-
-    #[test]
-    fn sample() {
-        let mut code = [0; 256];
-        thread_rng().fill(&mut code);
-        let mut mem = [0; 64 + 256 + 128];
-
-        let gen = LightJit::new();
-        let mut compiler = Compiler::new(gen);
-        let runner = compiler.compile(&code, 4, 64, 256, 128);
-
-        drop(compiler);
-
-        runner.step(&mut mem);
     }
 }

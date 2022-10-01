@@ -22,8 +22,5 @@ bitvec = "1"
 arrayvec = "0.7"
 dynasmrt = "1"
 
-[dev-dependencies]
-rand = "0.8"
-
 [features]
 cranelift = ["dep:cranelift", "cranelift-jit", "cranelift-module", "cranelift-native"]
