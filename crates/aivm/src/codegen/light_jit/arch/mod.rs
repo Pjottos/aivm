@@ -1,6 +1,6 @@
-use super::ir::InstructionKind;
+use super::{ir::InstructionKind, regalloc::RegAllocInstruction};
 
-use dynasmrt::{relocations, DynasmApi};
+use dynasmrt::{relocations, DynamicLabel, DynasmLabelApi};
 
 #[cfg(target_arch = "x86_64")]
 mod x86_64;
@@ -18,6 +18,21 @@ pub trait TargetInterface {
 
     fn supports_mem_operand(kind: InstructionKind) -> bool;
 
-    fn emit_prologue<A: DynasmApi>(ops: &mut A, stack_size: u32, used_regs_mask: u64);
-    fn emit_epilogue<A: DynasmApi>(ops: &mut A, stack_size: u32, used_regs_mask: u64);
+    fn emit_prologue<A: DynasmLabelApi<Relocation = Self::Relocation>>(
+        ops: &mut A,
+        stack_size: u32,
+        used_regs_mask: u64,
+    );
+    fn emit_epilogue<A: DynasmLabelApi<Relocation = Self::Relocation>>(
+        ops: &mut A,
+        stack_size: u32,
+        used_regs_mask: u64,
+    );
+
+    fn emit_instruction<A: DynasmLabelApi<Relocation = Self::Relocation>>(
+        ops: &mut A,
+        inst: RegAllocInstruction,
+        func_labels: &[DynamicLabel],
+        block_labels: &[DynamicLabel],
+    );
 }

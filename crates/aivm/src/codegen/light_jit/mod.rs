@@ -35,16 +35,19 @@ impl codegen::private::CodeGeneratorImpl for LightJit {
         let func_labels: Vec<_> = (0..self.functions.len())
             .map(|_| ops.new_dynamic_label())
             .collect();
+        let mut block_labels = vec![];
 
         for (f, func) in self.functions.drain(..).enumerate() {
             let reg_allocs = func.reg_allocs;
-
-            println!("{:#?}", reg_allocs);
+            block_labels.clear();
+            block_labels.extend((0..func.blocks.len()).map(|_| ops.new_dynamic_label()));
 
             dynasm!(ops; =>func_labels[f]);
             Target::emit_prologue(&mut ops, reg_allocs.stack_size, reg_allocs.used_regs_mask);
 
-            // TODO: emit function body
+            for inst in reg_allocs.instructions {
+                Target::emit_instruction(&mut ops, inst, &func_labels, &block_labels);
+            }
 
             Target::emit_epilogue(&mut ops, reg_allocs.stack_size, reg_allocs.used_regs_mask);
         }
@@ -81,7 +84,7 @@ impl crate::Runner for Runner {
         let output_range = memory.len() - self.output_size as usize..;
         memory[output_range].fill(0);
 
-        //println!("{:02x?}", &self.code[..]);
+        println!("{:02x?}", &self.code[..]);
 
         let entry: extern "sysv64" fn(*mut i64) =
             unsafe { transmute(self.code.ptr(AssemblyOffset(0))) };

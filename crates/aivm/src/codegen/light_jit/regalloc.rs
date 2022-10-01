@@ -13,24 +13,34 @@ pub struct PhysicalVar(u32);
 impl PhysicalVar {
     const INVALID: Self = Self(u32::MAX);
 
+    #[inline]
     fn new_register(r: u32) -> Self {
         Self(r & 0x7FFFFFFF)
     }
 
+    #[inline]
     fn new_stack(slot: u32) -> Self {
         Self(slot | 0x80000000)
     }
 
+    #[inline]
     fn is_valid(self) -> bool {
         self != Self::INVALID
     }
 
-    fn is_stack(self) -> bool {
+    #[inline]
+    pub fn is_stack(self) -> bool {
         self.0 & 0x80000000 != 0
     }
 
-    fn idx(self) -> u32 {
+    #[inline]
+    pub fn idx(self) -> u32 {
         self.0 & 0x7FFFFFFF
+    }
+
+    #[inline]
+    pub fn offset(self) -> i32 {
+        (self.idx() * 8) as i32
     }
 }
 
@@ -50,6 +60,7 @@ struct State {
     live_vars: HashMap<Var, PhysicalVar>,
     active_reg: [Option<LiveRange>; Target::REGISTER_COUNT],
     active_stack: [Option<LiveRange>; 64 - Target::REGISTER_COUNT],
+    stack_size: u32,
 }
 
 impl Default for State {
@@ -58,6 +69,7 @@ impl Default for State {
             live_vars: HashMap::new(),
             active_reg: Default::default(),
             active_stack: [None; 64 - Target::REGISTER_COUNT],
+            stack_size: 0,
         }
     }
 }
@@ -96,9 +108,12 @@ impl State {
 
     fn alloc_stack(&mut self, range: LiveRange) -> u32 {
         let stack_idx = self.active_stack.iter().position(Option::is_none).unwrap() as u32;
+        self.stack_size = self.stack_size.max(stack_idx + 1);
+
         self.live_vars
             .insert(range.var, PhysicalVar::new_stack(stack_idx));
         self.active_stack[stack_idx as usize] = Some(range);
+
         stack_idx
     }
 
@@ -116,7 +131,7 @@ impl State {
 
     fn use_reg(&mut self, reg: u32, range: LiveRange) {
         let target = &mut self.active_reg[reg as usize];
-        assert!(target.is_none());
+        debug_assert!(target.is_none());
         self.live_vars
             .insert(range.var, PhysicalVar::new_register(reg));
         *target = Some(range);
@@ -227,21 +242,18 @@ impl RegAllocations {
                     // Spill the variable with the longest remaining lifetime
                     let (r, active_range) = state.longest_active_reg().unwrap();
 
-                    let stack_idx;
                     if active_range.end > new_range.end {
-                        stack_idx = state.spill_reg(r, &mut inst);
+                        state.spill_reg(r, &mut inst);
                         state.use_reg(r, new_range);
                     } else {
-                        stack_idx = state.alloc_stack(new_range);
+                        state.alloc_stack(new_range);
                     };
-
-                    allocs.stack_size = allocs.stack_size.max(stack_idx + 1);
                 }
             }
 
             // Coalesce split blocks and ignore jump instructions since they always jump
             // to the next block, or the block that the previous block's branch instruction
-            // jumps to if the branch is taken
+            // jumps to if the branch is taken.
             match func_inst.kind {
                 InstructionKind::Jump => continue,
                 InstructionKind::BranchCmp { .. }
@@ -291,6 +303,8 @@ impl RegAllocations {
 
             allocs.instructions.push(inst);
         }
+
+        allocs.stack_size = state.stack_size;
     }
 
     fn clear(&mut self) {
