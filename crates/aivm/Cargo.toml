@@ -11,7 +11,7 @@ repository = "https://github.com/Pjottos/aivm"
 
 [package.metadata.docs.rs]
 all-features = true
-rustdoc-args = ["--cfg", "doc_cfg"]
+rustdoc-args = ["--cfg", "docsrs"]
 
 [dependencies]
 cranelift = { version = "0.80", optional = true }
@@ -23,6 +23,5 @@ arrayvec = { version = "0.7", optional = true }
 dynasmrt = { version = "1", optional = true }
 
 [features]
-default = ["jit"]
 cranelift = ["dep:cranelift", "cranelift-jit", "cranelift-module", "cranelift-native"]
 jit = ["bitvec", "arrayvec", "dynasmrt"]
