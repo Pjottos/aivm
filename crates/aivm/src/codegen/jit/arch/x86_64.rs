@@ -160,7 +160,7 @@ impl TargetInterface for Target {
                 test Rq(reg(u[0])), Rq(reg(u[0]));
                 jne =>block_labels[branch_exit.unwrap()]
             ),
-            IntAdd => dynasm!(ops; lea Rq(reg(d[0])), [Rq(reg(u[0])) + Rq(reg(u[0]))]),
+            IntAdd => dynasm!(ops; lea Rq(reg(d[0])), [Rq(reg(u[0])) + Rq(reg(u[1]))]),
             IntSub => {
                 if d[0] != u[0] {
                     dyn_op!(mov d[0], u[0]);
@@ -364,7 +364,7 @@ impl TargetInterface for Target {
                 debug_assert!(!u[0].is_stack());
                 dynasm!(ops
                     ; mov rax, addr as i32 * 8
-                    ; mov Rq(reg(u[0])), [rdi + rax]
+                    ; mov [rdi + rax], Rq(reg(u[0]))
                 );
             }
         }

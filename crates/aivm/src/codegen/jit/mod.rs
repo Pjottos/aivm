@@ -53,6 +53,7 @@ impl codegen::private::CodeGeneratorImpl for Jit {
         }
 
         let code = ops.finalize().unwrap();
+        //println!("{:02x?}", &code[..]);
 
         Runner {
             memory_size,
