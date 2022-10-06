@@ -40,16 +40,16 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
         &mut self,
         code: &[u64],
         lowest_function_level: u32,
-        input_size: u32,
-        output_size: u32,
         memory_size: u32,
+        output_size: u32,
+        input_size: u32,
     ) -> impl Runner + 'static {
         self.compile_with_frequencies::<DefaultFrequencies>(
             code,
             lowest_function_level,
             memory_size,
-            input_size,
             output_size,
+            input_size,
         )
     }
 
@@ -59,8 +59,8 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
         code: &[u64],
         lowest_function_level: u32,
         memory_size: u32,
-        input_size: u32,
         output_size: u32,
+        input_size: u32,
     ) -> impl Runner + 'static {
         assert_ne!(lowest_function_level, u32::MAX);
 
@@ -218,7 +218,7 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
                 } else if cmp_freq(&mut kind, F::INPUT_LOAD) {
                     if input_size != 0 {
                         let addr = imm % input_size;
-                        emitter.emit_mem_load(a, memory_size + addr);
+                        emitter.emit_mem_load(a, memory_size + output_size + addr);
                     } else {
                         emitter.emit_nop();
                     }
@@ -232,7 +232,7 @@ impl<G: CodeGenerator + 'static> Compiler<G> {
                 } else if cmp_freq(&mut kind, F::OUTPUT_STORE) {
                     if output_size != 0 {
                         let addr = imm % output_size;
-                        emitter.emit_mem_store(memory_size + input_size + addr, a);
+                        emitter.emit_mem_store(memory_size + addr, a);
                     } else {
                         emitter.emit_nop();
                     }
@@ -271,11 +271,13 @@ fn cmp_freq(kind: &mut u16, freq: u16) -> bool {
 }
 
 #[inline]
-fn branch_offset(imm: u32, func: &Function, cur_offset: u32) -> Option<u32> {
-    let max_offset = func.instruction_count - cur_offset - 1;
+fn branch_offset(imm: u32, func: &Function, cur_instruction: u32) -> Option<u32> {
+    // End bound of valid offsets, so max_offset + 1
+    let offset_end = func.instruction_count - cur_instruction;
 
-    if max_offset > 1 {
-        let offset = imm % max_offset;
+    // Skipping 0 instructions is pointless
+    if offset_end > 1 {
+        let offset = imm % offset_end;
         if offset != 0 {
             return Some(offset);
         }

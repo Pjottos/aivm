@@ -98,7 +98,7 @@ impl codegen::private::CodeGeneratorImpl for Cranelift {
         }
     }
 
-    fn finish(&mut self, memory_size: u32, input_size: u32, output_size: u32) -> Self::Runner {
+    fn finish(&mut self, memory_size: u32, output_size: u32, input_size: u32) -> Self::Runner {
         self.define_cur_function();
         self.module.finalize_definitions();
 
@@ -135,8 +135,6 @@ impl Cranelift {
 
     fn make_signature(&self) -> Signature {
         let mut sig = self.module.make_signature();
-        sig.params.push(ir::AbiParam::new(ir::types::R64));
-        sig.params.push(ir::AbiParam::new(ir::types::R64));
         sig.params.push(ir::AbiParam::new(ir::types::R64));
 
         sig
@@ -466,14 +464,14 @@ pub struct Runner {
     func_id: FuncId,
     module: Option<JITModule>,
     memory_size: u32,
-    input_size: u32,
     output_size: u32,
+    input_size: u32,
 }
 
 impl crate::Runner for Runner {
     fn step(&self, memory: &mut [i64]) {
         // It would be unsound to call the compiled code with an invalid pointer.
-        assert!((self.memory_size + self.input_size + self.output_size) as usize <= memory.len());
+        assert!((self.memory_size + self.output_size + self.input_size) as usize <= memory.len());
 
         let ptr = self
             .module
