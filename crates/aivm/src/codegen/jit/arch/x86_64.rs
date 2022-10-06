@@ -309,13 +309,13 @@ impl TargetInterface for Target {
                 }
             }
             BitSelect => {
-                debug_assert!(d[0] != u[1] && d[0] != u[2]);
-                if d[0] != u[0] {
-                    dyn_op!(mov d[0], u[0])
+                debug_assert!(d[0] != u[0] && d[0] != u[2]);
+                if d[0] != u[1] {
+                    dyn_op!(mov d[0], u[1])
                 }
-                dyn_op!(xor d[0], u[1]);
-                dyn_op!(and d[0], u[2]);
-                dyn_op!(xor d[0], u[1]);
+                dyn_op!(xor d[0], u[2]);
+                dyn_op!(and d[0], u[0]);
+                dyn_op!(xor d[0], u[2]);
             }
             BitPopcnt => {
                 debug_assert!(!d[0].is_stack());
