@@ -195,6 +195,12 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
     }
 
     fn finalize(&mut self) {
+        if let Some(block) = self.upcoming_blocks.remove(&self.next_instruction) {
+            self.builder.ins().jump(block, &[]);
+            self.builder.seal_block(block);
+            self.builder.switch_to_block(block);
+        }
+
         self.builder.ins().return_(&[]);
         self.builder.finalize();
     }
@@ -334,7 +340,7 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
 
     fn emit_bit_shift_right(&mut self, dst: u8, src: u8, amount: u8) {
         let a = self.use_var(src);
-        let res = self.builder.ins().ushr_imm(a, amount as i64);
+        let res = self.builder.ins().sshr_imm(a, amount as i64);
         self.builder.def_var(Self::var(dst), res);
     }
 
@@ -446,7 +452,7 @@ impl<'a> Emitter<'a> {
         F: FnOnce(&mut FunctionBuilder, Block) -> ir::Inst,
     {
         let resume_block = self.builder.create_block();
-        let target_instruction = self.next_instruction - 1 + offset;
+        let target_instruction = self.next_instruction + offset;
         let jump_block = *self
             .upcoming_blocks
             .entry(target_instruction)

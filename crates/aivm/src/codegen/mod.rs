@@ -114,6 +114,17 @@ mod tests {
         }
     }
 
+    macro_rules! insts {
+        ($e:ident, $($inst:expr);*;) => {
+            |$e| {
+                $(
+                    $e.prepare_emit();
+                    $inst;
+                )*
+            }
+        };
+    }
+
     macro_rules! instruction_tests {
         ($name:ident, $gen:expr) => {
             mod $name {
@@ -123,7 +134,7 @@ mod tests {
                 fn mem() {
                     let mut mem = [0x0DEADBEEDEADBEEF, 0];
                     Harness::new($gen, 1, &mut mem)
-                        .func(|e| {
+                        .func(insts! {e,
                             e.emit_mem_load(0, 0);
                             e.emit_mem_store(1, 0);
                         })
@@ -137,7 +148,7 @@ mod tests {
                     fn test_mul_high(a: i64, b: i64, result: i64) {
                         let mut mem = [a, b];
                         Harness::new($gen, 1, &mut mem)
-                            .func(|e| {
+                            .func(insts! {e,
                                 e.emit_mem_load(0, 0);
                                 e.emit_mem_load(1, 1);
                                 e.emit_int_mul_high(2, 0, 1);
@@ -167,7 +178,7 @@ mod tests {
                     fn test_mul_highu(a: i64, b: i64, result: i64) {
                         let mut mem = [a, b];
                         Harness::new($gen, 1, &mut mem)
-                            .func(|e| {
+                            .func(insts! {e,
                                 e.emit_mem_load(0, 0);
                                 e.emit_mem_load(1, 1);
                                 e.emit_int_mul_high_unsigned(2, 0, 1);
@@ -196,10 +207,10 @@ mod tests {
                 fn call() {
                     let mut mem = [0x0DEADBEEDEADBEEF, 0];
                     Harness::new($gen, 2, &mut mem)
-                        .func(|e| {
+                        .func(insts! {e,
                             e.emit_call(1);
                         })
-                        .func(|e| {
+                        .func(insts! {e,
                             e.emit_mem_load(0, 0);
                             e.emit_mem_store(1, 0);
                         })
@@ -213,7 +224,7 @@ mod tests {
                     fn test_add(a: i64, b: i64) {
                         let mut mem = [a, b];
                         Harness::new($gen, 1, &mut mem)
-                            .func(|e| {
+                            .func(insts! {e,
                                 e.emit_mem_load(0, 0);
                                 e.emit_mem_load(1, 1);
                                 e.emit_int_add(2, 0, 1);
@@ -240,7 +251,7 @@ mod tests {
                     fn test_sub(a: i64, b: i64) {
                         let mut mem = [a, b];
                         Harness::new($gen, 1, &mut mem)
-                            .func(|e| {
+                            .func(insts! {e,
                                 e.emit_mem_load(0, 0);
                                 e.emit_mem_load(1, 1);
                                 e.emit_int_sub(2, 0, 1);
@@ -267,7 +278,7 @@ mod tests {
                     fn test_mul(a: i64, b: i64) {
                         let mut mem = [a, b];
                         Harness::new($gen, 1, &mut mem)
-                            .func(|e| {
+                            .func(insts! {e,
                                 e.emit_mem_load(0, 0);
                                 e.emit_mem_load(1, 1);
                                 e.emit_int_mul(2, 0, 1);
@@ -294,7 +305,7 @@ mod tests {
                     fn test_neg(a: i64) {
                         let mut mem = [a];
                         Harness::new($gen, 1, &mut mem)
-                            .func(|e| {
+                            .func(insts! {e,
                                 e.emit_mem_load(0, 0);
                                 e.emit_int_neg(0, 0);
                                 e.emit_mem_store(0, 0);
@@ -314,7 +325,7 @@ mod tests {
                     fn test_abs(a: i64) {
                         let mut mem = [a];
                         Harness::new($gen, 1, &mut mem)
-                            .func(|e| {
+                            .func(insts! {e,
                                 e.emit_mem_load(0, 0);
                                 e.emit_int_abs(0, 0);
                                 e.emit_mem_store(0, 0);
@@ -334,7 +345,7 @@ mod tests {
                     fn test_inc(a: i64) {
                         let mut mem = [a];
                         Harness::new($gen, 1, &mut mem)
-                            .func(|e| {
+                            .func(insts! {e,
                                 e.emit_mem_load(0, 0);
                                 e.emit_int_inc(0);
                                 e.emit_mem_store(0, 0);
@@ -355,7 +366,7 @@ mod tests {
                     fn test_dec(a: i64) {
                         let mut mem = [a];
                         Harness::new($gen, 1, &mut mem)
-                            .func(|e| {
+                            .func(insts! {e,
                                 e.emit_mem_load(0, 0);
                                 e.emit_int_dec(0);
                                 e.emit_mem_store(0, 0);
@@ -376,7 +387,7 @@ mod tests {
                     fn test_min(a: i64, b: i64) {
                         let mut mem = [a, b];
                         Harness::new($gen, 1, &mut mem)
-                            .func(|e| {
+                            .func(insts! {e,
                                 e.emit_mem_load(0, 0);
                                 e.emit_mem_load(1, 1);
                                 e.emit_int_min(2, 0, 1);
@@ -403,7 +414,7 @@ mod tests {
                     fn test_max(a: i64, b: i64) {
                         let mut mem = [a, b];
                         Harness::new($gen, 1, &mut mem)
-                            .func(|e| {
+                            .func(insts! {e,
                                 e.emit_mem_load(0, 0);
                                 e.emit_mem_load(1, 1);
                                 e.emit_int_max(2, 0, 1);
@@ -430,7 +441,7 @@ mod tests {
                     fn test_or(a: i64, b: i64) {
                         let mut mem = [a, b];
                         Harness::new($gen, 1, &mut mem)
-                            .func(|e| {
+                            .func(insts! {e,
                                 e.emit_mem_load(0, 0);
                                 e.emit_mem_load(1, 1);
                                 e.emit_bit_or(2, 0, 1);
@@ -455,7 +466,7 @@ mod tests {
                     fn test_and(a: i64, b: i64) {
                         let mut mem = [a, b];
                         Harness::new($gen, 1, &mut mem)
-                            .func(|e| {
+                            .func(insts! {e,
                                 e.emit_mem_load(0, 0);
                                 e.emit_mem_load(1, 1);
                                 e.emit_bit_and(2, 0, 1);
@@ -480,7 +491,7 @@ mod tests {
                     fn test_and(a: i64, b: i64) {
                         let mut mem = [a, b];
                         Harness::new($gen, 1, &mut mem)
-                            .func(|e| {
+                            .func(insts! {e,
                                 e.emit_mem_load(0, 0);
                                 e.emit_mem_load(1, 1);
                                 e.emit_bit_and(2, 0, 1);
@@ -505,7 +516,7 @@ mod tests {
                     fn test_not(a: i64) {
                         let mut mem = [a];
                         Harness::new($gen, 1, &mut mem)
-                            .func(|e| {
+                            .func(insts! {e,
                                 e.emit_mem_load(0, 0);
                                 e.emit_bit_not(0, 0);
                                 e.emit_mem_store(0, 0);
@@ -527,7 +538,7 @@ mod tests {
                     fn test_shift_left(a: i64, amount: u8) {
                         let mut mem = [a];
                         Harness::new($gen, 1, &mut mem)
-                            .func(|e| {
+                            .func(insts! {e,
                                 e.emit_mem_load(0, 0);
                                 e.emit_bit_shift_left(0, 0, amount);
                                 e.emit_mem_store(0, 0);
@@ -550,7 +561,7 @@ mod tests {
                     fn test_shift_right(a: i64, amount: u8) {
                         let mut mem = [a];
                         Harness::new($gen, 1, &mut mem)
-                            .func(|e| {
+                            .func(insts! {e,
                                 e.emit_mem_load(0, 0);
                                 e.emit_bit_shift_right(0, 0, amount);
                                 e.emit_mem_store(0, 0);
@@ -573,7 +584,7 @@ mod tests {
                     fn test_rotate_left(a: i64, amount: u8) {
                         let mut mem = [a];
                         Harness::new($gen, 1, &mut mem)
-                            .func(|e| {
+                            .func(insts! {e,
                                 e.emit_mem_load(0, 0);
                                 e.emit_bit_rotate_left(0, 0, amount);
                                 e.emit_mem_store(0, 0);
@@ -595,7 +606,7 @@ mod tests {
                     fn test_rotate_right(a: i64, amount: u8) {
                         let mut mem = [a];
                         Harness::new($gen, 1, &mut mem)
-                            .func(|e| {
+                            .func(insts! {e,
                                 e.emit_mem_load(0, 0);
                                 e.emit_bit_rotate_right(0, 0, amount);
                                 e.emit_mem_store(0, 0);
@@ -617,7 +628,7 @@ mod tests {
                     fn test_select(mask: i64, a: i64, b: i64) {
                         let mut mem = [mask, a, b];
                         Harness::new($gen, 1, &mut mem)
-                            .func(|e| {
+                            .func(insts! {e,
                                 e.emit_mem_load(0, 0);
                                 e.emit_mem_load(1, 1);
                                 e.emit_mem_load(2, 2);
@@ -643,7 +654,7 @@ mod tests {
                     fn test_popcnt(a: i64) {
                         let mut mem = [a];
                         Harness::new($gen, 1, &mut mem)
-                            .func(|e| {
+                            .func(insts! {e,
                                 e.emit_mem_load(0, 0);
                                 e.emit_bit_popcnt(0, 0);
                                 e.emit_mem_store(0, 0);
@@ -668,7 +679,7 @@ mod tests {
                     fn test_reverse(a: i64) {
                         let mut mem = [a];
                         Harness::new($gen, 1, &mut mem)
-                            .func(|e| {
+                            .func(insts! {e,
                                 e.emit_mem_load(0, 0);
                                 e.emit_bit_reverse(0, 0);
                                 e.emit_mem_store(0, 0);
@@ -693,7 +704,7 @@ mod tests {
                     fn test_branch_cmp(a: i64, b: i64, kind: CompareKind) {
                         let mut mem = [0, a, b, 0x0DEADBEEDEADBEEF];
                         Harness::new($gen, 1, &mut mem)
-                            .func(|e| {
+                            .func(insts! {e,
                                 e.emit_mem_load(0, 1);
                                 e.emit_mem_load(1, 2);
                                 e.emit_branch_cmp(0, 1, kind, 2);
@@ -736,7 +747,7 @@ mod tests {
                     fn test_branch_zero(a: i64) {
                         let mut mem = [0, a, 0x0DEADBEEDEADBEEF];
                         Harness::new($gen, 1, &mut mem)
-                            .func(|e| {
+                            .func(insts! {e,
                                 e.emit_mem_load(0, 1);
                                 e.emit_branch_zero(0, 2);
                                 e.emit_mem_load(2, 2);
@@ -759,7 +770,7 @@ mod tests {
                     fn test_branch_non_zero(a: i64) {
                         let mut mem = [0, a, 0x0DEADBEEDEADBEEF];
                         Harness::new($gen, 1, &mut mem)
-                            .func(|e| {
+                            .func(insts! {e,
                                 e.emit_mem_load(0, 1);
                                 e.emit_branch_non_zero(0, 2);
                                 e.emit_mem_load(2, 2);
