@@ -315,22 +315,17 @@ impl<'a> codegen::private::Emitter for Emitter<'a> {
                 let (version, start, end) = var_stacks[var.name() as usize].pop().unwrap();
                 debug_assert_eq!(var.version(), version);
 
-                live_ranges.push(LiveRange { var, start, end })
+                live_ranges.push(LiveRange { var, start, end });
             }
         }
 
         live_ranges.sort_unstable_by_key(|r| if r.end == 0 { u32::MAX } else { r.start });
         // Don't need variables that never get read
-        if let Some(dead_start) = live_ranges.iter().rposition(|r| r.end != 0) {
-            live_ranges.truncate(dead_start);
+        if let Some(last_live) = live_ranges.iter().rposition(|r| r.end != 0) {
+            live_ranges.truncate(last_live + 1);
         }
 
         RegAllocations::run(self.func, live_ranges);
-
-        //println!("allocs: {:#?}", reg_allocs);
-        //for (i, live_range) in live_ranges.iter().enumerate() {
-        //    println!("{}: {:?} {:?}", i, live_range.var, live_range.range);
-        //}
     }
 
     fn emit_call(&mut self, idx: u32) {
