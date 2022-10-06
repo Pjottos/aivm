@@ -79,7 +79,7 @@ impl<'a> Emitter<'a> {
             .predecessors
             .push(fall_through_proxy_block_name);
 
-        let target_instruction = self.instruction_count - 1 + offset;
+        let target_instruction = self.instruction_count + offset;
         self.branch_targets.push(PendingBranchTarget {
             branch_proxy_block_name,
             target_instruction,
@@ -94,6 +94,29 @@ impl<'a> Emitter<'a> {
         self.cur_block.predecessors.push(block_name);
     }
 
+    fn create_branch_targets(&mut self) {
+        // Use `drain_filter` when stabilized (https://github.com/rust-lang/rust/issues/43244)
+        let mut i = 0;
+        while i < self.branch_targets.len() {
+            if self.branch_targets[i].target_instruction == self.instruction_count {
+                let PendingBranchTarget {
+                    branch_proxy_block_name,
+                    ..
+                } = self.branch_targets.swap_remove(i);
+
+                // Begin new block for branch to jump to
+                if !self.cur_block.instructions.is_empty() {
+                    self.finish_block_with_fall_through();
+                }
+
+                self.cur_block.predecessors.push(branch_proxy_block_name);
+                self.func.blocks[branch_proxy_block_name.0 as usize].exit = self.cur_block_name();
+            } else {
+                i += 1;
+            }
+        }
+    }
+
     fn def_var(&mut self, name: u8) -> Var {
         self.cur_block.var_def_mask.insert(name);
         Var::new(name)
@@ -106,34 +129,12 @@ impl<'a> Emitter<'a> {
 
 impl<'a> codegen::private::Emitter for Emitter<'a> {
     fn prepare_emit(&mut self) {
-        // Use `drain_filter` when stabilized (https://github.com/rust-lang/rust/issues/43244)
-        let mut i = 0;
-        while i < self.branch_targets.len() {
-            if self.branch_targets[i].target_instruction == self.instruction_count {
-                let PendingBranchTarget {
-                    branch_proxy_block_name,
-                    ..
-                } = self.branch_targets.swap_remove(i);
-
-                // Begin new block for branch to jump to
-                if self.cur_block.instructions.is_empty() {
-                    self.finish_block_with_fall_through();
-                }
-
-                self.cur_block.predecessors.push(branch_proxy_block_name);
-                self.func.blocks[branch_proxy_block_name.0 as usize].exit = self.cur_block_name();
-            } else {
-                i += 1;
-            }
-        }
-
+        self.create_branch_targets();
         self.instruction_count += 1;
     }
 
     fn finalize(&mut self) {
-        if !self.cur_block.instructions.is_empty() {
-            self.finish_block_with_fall_through();
-        }
+        self.create_branch_targets();
 
         self.cur_block.instructions.push(Instruction::return_());
         self.finish_block();

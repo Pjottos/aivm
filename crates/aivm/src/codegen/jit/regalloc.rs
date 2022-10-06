@@ -259,9 +259,9 @@ impl RegAllocations {
                 InstructionKind::BranchCmp { .. }
                 | InstructionKind::BranchZero
                 | InstructionKind::BranchNonZero => {
-                    inst.actions.push(RegAllocAction::BranchExit(
-                        func.blocks[func.blocks[b.0 as usize].branch_exit.0 as usize].exit,
-                    ));
+                    let proxy = func.blocks[b.0 as usize].branch_exit;
+                    let target = func.blocks[proxy.0 as usize].exit;
+                    inst.actions.push(RegAllocAction::BranchExit(target));
                 }
                 _ => (),
             }
