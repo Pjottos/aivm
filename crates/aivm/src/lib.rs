@@ -14,8 +14,8 @@
 //!
 //! const LOWEST_FUNCTION_LEVEL: u32 = 1;
 //! const MEMORY_SIZE: u32 = 4;
-//! const INPUT_SIZE: u32 = 4;
 //! const OUTPUT_SIZE: u32 = 4;
+//! const INPUT_SIZE: u32 = 4;
 //!
 //! let gen = codegen::Interpreter::new();
 //! let mut compiler = Compiler::new(gen);
@@ -26,10 +26,10 @@
 //!     &code,
 //!     LOWEST_FUNCTION_LEVEL,
 //!     MEMORY_SIZE,
-//!     INPUT_SIZE,
 //!     OUTPUT_SIZE,
+//!     INPUT_SIZE,
 //! );
-//! let mut memory = [0; (MEMORY_SIZE + INPUT_SIZE + OUTPUT_SIZE) as usize];
+//! let mut memory = [0; (MEMORY_SIZE + OUTPUT_SIZE + INPUT_SIZE) as usize];
 //!
 //! runner.step(&mut memory);
 //! ```
@@ -47,7 +47,7 @@ pub trait Runner {
     /// Run the VM code, clearing the output and then calling into the main function once.
     ///
     /// The provided memory slice is interpreted as the concatenation of the
-    /// memory, input and output in that order. It must be at least as big
+    /// memory, output and input in that order. It must be at least as big
     /// as the sum of the sizes that were used while compiling the code.
     fn step(&self, memory: &mut [i64]);
 }

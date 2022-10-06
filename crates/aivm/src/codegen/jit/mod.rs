@@ -30,7 +30,7 @@ impl codegen::private::CodeGeneratorImpl for Jit {
         ir::Emitter::new(&mut self.functions[idx as usize])
     }
 
-    fn finish(&mut self, memory_size: u32, input_size: u32, output_size: u32) -> Self::Runner {
+    fn finish(&mut self, memory_size: u32, output_size: u32, input_size: u32) -> Self::Runner {
         let mut ops = Assembler::<<Target as TargetInterface>::Relocation>::new().unwrap();
         let func_labels: Vec<_> = (0..self.functions.len())
             .map(|_| ops.new_dynamic_label())
@@ -56,8 +56,8 @@ impl codegen::private::CodeGeneratorImpl for Jit {
 
         Runner {
             memory_size,
-            input_size,
             output_size,
+            input_size,
             code,
         }
     }
@@ -72,8 +72,8 @@ impl Jit {
 
 pub struct Runner {
     memory_size: u32,
-    input_size: u32,
     output_size: u32,
+    input_size: u32,
     code: ExecutableBuffer,
 }
 
